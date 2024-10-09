@@ -5,7 +5,7 @@ namespace ebuild;
 
 public class PlatformRegistry
 {
-    private static List<Platform> _platforms = [];
+    private static List<Platform> _platforms = new();
 
     public static Platform GetNullPlatform()
     {

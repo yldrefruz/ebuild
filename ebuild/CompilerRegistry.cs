@@ -5,7 +5,7 @@ namespace ebuild;
 
 public class CompilerRegistry
 {
-    private static readonly List<Compiler> Compilers = [];
+    private static readonly List<Compiler> Compilers = new();
 
     public static void RegisterCompiler(Compiler compiler)
     {

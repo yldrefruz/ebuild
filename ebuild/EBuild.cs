@@ -1,13 +1,18 @@
 ﻿using System.Diagnostics;
-using System.IO.Compression;
 using System.Reflection;
 using System.Text;
 
 
 namespace ebuild;
 
-public class EBuild
+public static class EBuild
 {
+    private static bool _generateCompileCommandsJson;
+    private static bool _noCompile;
+    private static bool _debug;
+    private static string _additionalFlagsArg = "";
+    private static bool _additionalFlags;
+
     public static string CompileModuleFile(string modulePath, string ebuildProjLocation)
     {
         var moduleDirectory = Directory.GetParent(modulePath)!.FullName;
@@ -83,6 +88,36 @@ public class EBuild
     public static void Main(string[] args)
     {
         var moduleTarget = args[0];
+        for (int i = 0; i < args.Length; ++i)
+        {
+            string arg = args[i];
+            switch (arg)
+            {
+                case "-GenerateCompileCommands" when !_generateCompileCommandsJson:
+                    Console.WriteLine(
+                        "GenerateCompileCommands found, will create compile_commands.json at the moduleTarget's directory");
+                    _generateCompileCommandsJson = true;
+                    continue;
+                case "-NoCompile" when !_noCompile:
+                    Console.WriteLine("NoCompile found, will not compile");
+                    _noCompile = true;
+                    continue;
+                case "-Debug" when !_debug:
+                    _debug = true;
+                    break;
+                case "-AdditionalFlags":
+                {
+                    i++;
+                    if (args.Length >= i) continue;
+                    Console.WriteLine("Found additional flag " + args[i]);
+                    _additionalFlags = true;
+                    _additionalFlagsArg = args[i];
+                    break;
+                }
+            }
+        }
+
+
         var foundEBuildProj = FindEBuildProject();
         if (foundEBuildProj == null)
         {
@@ -90,7 +125,7 @@ public class EBuild
             return;
         }
 
-        var toLoadDllFile = CompileModuleFile(moduleTarget, foundEBuildProj!);
+        var toLoadDllFile = CompileModuleFile(moduleTarget, foundEBuildProj);
         var loadedModuleAssembly = Assembly.LoadFile(toLoadDllFile);
         Type? loadedModuleType = null;
         foreach (var type in loadedModuleAssembly.GetTypes())
@@ -110,18 +145,28 @@ public class EBuild
         var moduleContext = new ModuleContext()
         {
             ModuleFile = moduleTarget,
+            ModuleDirectory = Directory.GetParent(moduleTarget)!.FullName,
             EbuildLocation = Assembly.GetExecutingAssembly().Location
         };
         PlatformRegistry.LoadFromAssembly(Assembly.GetExecutingAssembly());
         CompilerRegistry.LoadFromAssembly(Assembly.GetExecutingAssembly());
-        var createdModule = (Module)Activator.CreateInstance(loadedModuleType, [moduleContext])!;
+        var createdModule = (Module)Activator.CreateInstance(loadedModuleType, new object?[] { moduleContext })!;
         var compiler = CompilerRegistry.GetCompiler(createdModule);
-        Console.WriteLine("The compiler for module {0} is {1}({2})", nameof(createdModule), compiler.GetName(),
+        Console.WriteLine("The compiler for module {0} is {1}({2})", createdModule.Name, compiler.GetName(),
             compiler.GetExecutablePath());
         compiler.SetCurrentTarget(createdModule);
         var targetWorkingDir = Path.Join(Directory.GetParent(moduleTarget)!.FullName, "Binaries");
         Directory.CreateDirectory(targetWorkingDir);
         Directory.SetCurrentDirectory(targetWorkingDir);
-        compiler.Compile(moduleContext);
+        compiler.SetDebugBuild(_debug);
+        if (_additionalFlags)
+        {
+            compiler.AdditionalFlags.AddRange(_additionalFlagsArg.Split(" "));
+        }
+
+        if (!_noCompile)
+            compiler.Compile(moduleContext);
+        if (_generateCompileCommandsJson)
+            compiler.Generate("CompileCommandsJSON", moduleContext);
     }
 }

@@ -2,6 +2,9 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ebuild.Compilers;
 
@@ -119,7 +122,13 @@ public class MsvcCompiler : Compiler
     public override string GetExecutablePath()
     {
         var msvcCompilerBin = GetMsvcCompilerBin();
-        return Path.Join(msvcCompilerBin, "cl.exe");
+        var clPath = Path.Join(msvcCompilerBin, "cl.exe");
+        if (clPath.Contains(" "))
+        {
+            clPath = "\"" + clPath + "\"";
+        }
+
+        return clPath;
     }
 
     private string GetMsvcCompilerBin()
@@ -131,6 +140,14 @@ public class MsvcCompiler : Compiler
         return msvcCompilerBin;
     }
 
+    private string GetMsvcCompilerLib()
+    {
+        var targetArch = "x86";
+        if (GetCurrentTarget() != null && GetCurrentTarget()!.Architecture == Architecture.X64)
+            targetArch = "x64";
+        return Path.Join(_msvcToolRoot, "lib", targetArch);
+    }
+
     private static string GetShorterPath(string path)
     {
         var fp = Path.GetFullPath(path).Replace("\\", @"\\");
@@ -140,42 +157,131 @@ public class MsvcCompiler : Compiler
         return fp.Length > rp.Length ? rp : fp;
     }
 
+    // ReSharper disable once UnusedParameter.Local
+    private void MutateTarget(ModuleContext moduleContext)
+    {
+        var currentTarget = GetCurrentTarget();
+        if (currentTarget == null)
+            return;
+        if (currentTarget.UseDefaultIncludes)
+        {
+            currentTarget.Includes.AddRange(new[]
+            {
+                Path.Join(_msvcToolRoot, "include"),
+                //TODO: programatically find this.
+                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt",
+                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um",
+                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared"
+            });
+        }
+
+        if (currentTarget.UseDefaultLibraryPaths)
+        {
+            currentTarget.LibrarySearchPaths.AddRange(new[]
+            {
+                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64",
+                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64",
+                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt_enclave\x64",
+                GetMsvcCompilerLib()
+            });
+        }
+
+        if (currentTarget.UseDefaultLibraries)
+        {
+            currentTarget.Libraries.AddRange(new string[]
+                { });
+        }
+    }
+
+    private string CppStandardToArg(CXXStd std)
+    {
+        string value = "/std:";
+        switch (std)
+        {
+            case CXXStd.CXX14:
+                value += "c++14";
+                break;
+            case CXXStd.CXX15:
+                value += "c++17";
+                break;
+            case CXXStd.CXX20:
+                value += "c++20";
+                break;
+            case CXXStd.CXXLatest:
+                value += "c++latest";
+                break;
+            case CXXStd.C11:
+                value += "c11";
+                break;
+            case CXXStd.C17:
+                value += "c17";
+                break;
+            case CXXStd.CLatest:
+                value += "clatest";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(std), std, null);
+        }
+
+        return value;
+    }
+
+    private string GenerateCompileCommand(bool bSourceFiles)
+    {
+        var currentTarget = GetCurrentTarget();
+        if (currentTarget == null) throw new NullReferenceException();
+        var command = "/nologo /c /EHsc " + CppStandardToArg(currentTarget.CppStandard) + " ";
+        if (IsDebugBuild())
+        {
+            command += "/MDd ";
+        }
+        else
+        {
+            command += "/MD ";
+        }
+
+        if (AdditionalFlags.Count != 0)
+        {
+            command += string.Join(" ", AdditionalFlags);
+            command += " ";
+        }
+
+
+        foreach (var definition in currentTarget.Definitions)
+        {
+            command += $"/D\"{definition}\"";
+            command += " ";
+        }
+
+        var binaryDir = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
+        foreach (var toInclude in currentTarget.Includes.Select(include => $"/I\"{GetShorterPath(include)}\""))
+        {
+            command += toInclude;
+            command += " ";
+        }
+
+        if (bSourceFiles)
+        {
+            foreach (var source in currentTarget.SourceFiles)
+            {
+                command += '"' + GetShorterPath(source) + '"';
+                command += " ";
+            }
+        }
+
+        Directory.SetCurrentDirectory(binaryDir);
+
+        return command;
+    }
+
     public override void Compile(ModuleContext moduleContext)
     {
         var currentTarget = GetCurrentTarget();
         if (currentTarget == null) return;
         Console.WriteLine("Starting the Compiler section.");
-        var commandFileContent = "/nologo /c ";
-        foreach (var definition in currentTarget.Definitions)
-        {
-            commandFileContent += $"/D\"{definition}\"";
-            commandFileContent += " ";
-        }
-
-        if (currentTarget.UseDefaultIncludes)
-        {
-            currentTarget.Includes.AddRange([
-                Path.Join(_msvcToolRoot, "include"),
-                //TODO: programatically find this.
-                "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.22621.0\\ucrt"
-            ]);
-        }
-
-        var binaryDir = Directory.GetCurrentDirectory();
-        Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
-        foreach (var include in currentTarget.Includes)
-        {
-            var toInclude = $"/I\"{GetShorterPath(include)}\"";
-            commandFileContent += toInclude;
-            commandFileContent += " ";
-        }
-
-        foreach (var source in currentTarget.SourceFiles)
-        {
-            commandFileContent += '"' + GetShorterPath(source) + '"';
-            commandFileContent += " ";
-        }
-
+        MutateTarget(moduleContext);
+        var commandFileContent = GenerateCompileCommand(true);
 
         var commandFilePath = Path.GetTempFileName();
         using (var commandFile = File.OpenWrite(commandFilePath))
@@ -186,7 +292,7 @@ public class MsvcCompiler : Compiler
             commandFile.Flush();
         }
 
-        Directory.SetCurrentDirectory(binaryDir);
+
         var startInfo = new ProcessStartInfo()
         {
             WorkingDirectory = Directory.GetCurrentDirectory(),
@@ -194,6 +300,8 @@ public class MsvcCompiler : Compiler
             FileName = GetExecutablePath(),
             RedirectStandardError = true,
             RedirectStandardOutput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
             UseShellExecute = false,
         };
@@ -204,94 +312,343 @@ public class MsvcCompiler : Compiler
             return;
         }
 
+        proc.OutputDataReceived += (sender, args) => Console.Out.WriteLine("- [Compiler] : " + args.Data);
+        proc.ErrorDataReceived += (sender, args) => Console.Error.WriteLine("- [Compiler] : " + args.Data);
         proc.Start();
-        Console.WriteLine(proc.StandardError.ReadToEnd());
-        Console.WriteLine(proc.StandardOutput.ReadToEnd());
+        proc.BeginErrorReadLine();
+        proc.BeginOutputReadLine();
         proc.WaitForExit();
+
         if (File.Exists(commandFilePath))
             File.Delete(commandFilePath);
         if (proc.ExitCode != 0)
         {
             Console.WriteLine("Compilation Failed, {0}", proc.ExitCode);
-            Console.WriteLine("Command File Content was:\n{0}", commandFileContent);
             Console.Out.Flush();
+            List<string> files = new();
+            files.AddRange(Directory.GetFiles(Directory.GetCurrentDirectory(), "*.out", SearchOption.TopDirectoryOnly));
+            files.AddRange(Directory.GetFiles(Directory.GetCurrentDirectory(), "*.pdb", SearchOption.TopDirectoryOnly));
+            foreach (var file in files)
+            {
+                Console.WriteLine("Compilation file {0} is being removed", file);
+                try
+                {
+                    File.Delete(Path.GetFullPath(file));
+                }
+                catch (Exception)
+                {
+                    // ignored
+                }
+            }
+
             return;
         }
 
+        Thread.Sleep(500);
+
         Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
         Console.WriteLine("End of compiling.");
-        if (currentTarget.Type == ModuleType.StaticLibrary)
+        switch (currentTarget.Type)
         {
-            Console.WriteLine("Starting LIB.EXE");
-            var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
-            var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
-            files = files.Where(s => s.EndsWith(".obj")).ToArray();
-            files = files.Select(GetShorterPath).ToArray();
-            Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
-            var libCommandFileContent =
-                $"/nologo /verbose /OUT:\"{Path.Join(binaryDir, "lib", currentTarget.Name + ".lib")}\" ";
-
-            foreach (var libPath in currentTarget.LibrarySearchPaths)
+            case ModuleType.StaticLibrary:
             {
-                libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
-                libCommandFileContent += " ";
+                CallLibExe();
+                break;
             }
-
-            foreach (var file in files)
+            case ModuleType.DynamicLibrary:
+            case ModuleType.Executable:
+            case ModuleType.ExecutableWin32:
             {
-                libCommandFileContent += $"\"{file}\"";
-                libCommandFileContent += " ";
+                CallLinkExe();
+                break;
             }
-
-            foreach (var library in currentTarget.Libraries)
-            {
-                var mutableLibrary = library;
-                if (File.Exists(library))
-                {
-                    mutableLibrary = Path.GetFullPath(mutableLibrary);
-                }
-
-                libCommandFileContent += '"' + mutableLibrary.Replace("\\", @"\\") + '"';
-                libCommandFileContent += " ";
-            }
-
-            var tempFile = Path.GetTempFileName();
-            using (var commandFile = File.OpenWrite(tempFile))
-            {
-                using var writer = new StreamWriter(commandFile);
-                writer.Write(libCommandFileContent);
-            }
-
-            Console.WriteLine("Launching lib.exe with command file content {0}", libCommandFileContent);
-            Directory.SetCurrentDirectory(binaryDir);
-            var p = new ProcessStartInfo()
-            {
-                Arguments = $"@\"{tempFile}\"",
-                FileName = libExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = binaryDir,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            var process = new Process();
-            process.StartInfo = p;
-            process.Start();
-            Console.WriteLine(process.StandardOutput.ReadToEnd());
-            Console.WriteLine(process.StandardError.ReadToEnd());
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                Console.WriteLine("LIB.exe failed, exit code: {0}", process.ExitCode);
-                return;
-            }
-
-            Console.WriteLine("LIB.exe finished");
-            var objFiles = Directory.GetFiles(binaryDir, "*.obj");
-            foreach (var file in objFiles)
-                File.Delete(file);
         }
+
+        ProcessAdditionalDependencies();
+    }
+
+    private void ProcessAdditionalDependencies()
+    {
+        Console.WriteLine("Copying files/directories");
+        foreach (var additionalDependency in GetCurrentTarget()!.AdditionalDependencies)
+        {
+            switch (additionalDependency.Type)
+            {
+                case AdditionalDependency.DependencyType.Directory:
+                {
+                    var dir = new DirectoryInfo(additionalDependency.Path);
+                    var targetDir = additionalDependency.Target ??
+                                    Path.Join(Directory.GetCurrentDirectory(), "Binaries");
+                    Directory.CreateDirectory(targetDir);
+                    var files = dir.GetFiles("*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        var targetFile = Path.Combine(targetDir,
+                            Path.GetRelativePath(additionalDependency.Path, file.FullName));
+                        var parentDir = new FileInfo(targetFile).Directory;
+                        while (parentDir is { Exists: false })
+                        {
+                            parentDir.Create();
+                            parentDir = parentDir.Parent;
+                        }
+
+                        if (additionalDependency.Processor != null)
+                        {
+                            additionalDependency.Processor(additionalDependency.Path, targetFile);
+                        }
+                        else
+                        {
+                            File.Copy(file.FullName, targetFile, true);
+                        }
+                    }
+
+                    break;
+                }
+                case AdditionalDependency.DependencyType.File:
+                {
+                    var targetDir = additionalDependency.Target ??
+                                    Path.Join(Directory.GetCurrentDirectory(), "Binaries");
+                    Directory.CreateDirectory(targetDir);
+                    var file = new FileInfo(additionalDependency.Path);
+                    var targetFile = Path.Combine(targetDir,
+                        Path.GetRelativePath(additionalDependency.Path, file.FullName));
+                    var parentDir = new FileInfo(targetFile).Directory;
+                    while (parentDir is { Exists: false })
+                    {
+                        parentDir.Create();
+                        parentDir = parentDir.Parent;
+                    }
+
+                    if (additionalDependency.Processor != null)
+                    {
+                        additionalDependency.Processor(additionalDependency.Path, targetFile);
+                    }
+                    else
+                    {
+                        File.Copy(additionalDependency.Path, targetFile, true);
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    private void CallLinkExe()
+    {
+        var currentTarget = GetCurrentTarget();
+        if (currentTarget == null)
+            return;
+        var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
+        Console.WriteLine("Starting LINK.EXE");
+        var libExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
+        var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
+        files = files.Where(s => s.EndsWith(".obj")).ToArray();
+        files = files.Select(GetShorterPath).ToArray();
+        var libCommandFileContent = "/nologo /verbose ";
+        var outType = ".exe";
+        if (currentTarget.Type == ModuleType.ExecutableWin32)
+        {
+            libCommandFileContent += "/SUBSYSTEM:WINDOWS ";
+        }
+        else if (currentTarget.Type == ModuleType.Executable)
+        {
+            libCommandFileContent = "/SUBSYSTEM:CONSOLE ";
+        }
+
+        if (currentTarget.Type == ModuleType.DynamicLibrary)
+        {
+            libCommandFileContent = "/DLL ";
+            outType = ".dll";
+        }
+
+        libCommandFileContent +=
+            $"/OUT:\"{Path.Join(binaryDir, currentTarget.Name + outType)}\" ";
+
+        foreach (var libPath in currentTarget.LibrarySearchPaths)
+        {
+            libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
+            libCommandFileContent += " ";
+        }
+
+        foreach (var file in files)
+        {
+            libCommandFileContent += $"\"{file}\"";
+            libCommandFileContent += " ";
+        }
+
+        foreach (var library in currentTarget.Libraries)
+        {
+            var mutableLibrary = library;
+            if (File.Exists(library))
+            {
+                mutableLibrary = Path.GetFullPath(mutableLibrary);
+            }
+
+            libCommandFileContent += '"' + mutableLibrary.Replace("\\", @"\\") + '"';
+            libCommandFileContent += " ";
+        }
+
+        var tempFile = Path.GetTempFileName();
+        using (var commandFile = File.OpenWrite(tempFile))
+        {
+            using var writer = new StreamWriter(commandFile);
+            writer.Write(libCommandFileContent);
+        }
+
+        Console.WriteLine("Launching link.exe with command file content {0}", libCommandFileContent);
+        Directory.SetCurrentDirectory(binaryDir);
+        var p = new ProcessStartInfo()
+        {
+            Arguments = $"@\"{tempFile}\"",
+            FileName = libExe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = binaryDir,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            CreateNoWindow = true
+        };
+        var process = new Process();
+        process.StartInfo = p;
+        process.Start();
+        Console.WriteLine(process.StandardOutput.ReadToEnd());
+        Console.WriteLine(process.StandardError.ReadToEnd());
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            Console.WriteLine("LINK.exe failed, exit code: {0}", process.ExitCode);
+            Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
+            return;
+        }
+
+        Console.WriteLine("LINK.exe finished");
+        var objFiles = Directory.GetFiles(binaryDir, "*.obj");
+        foreach (var file in objFiles)
+            File.Delete(file);
+        Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
+    }
+
+    private void CallLibExe()
+    {
+        var currentTarget = GetCurrentTarget();
+        if (currentTarget == null)
+            return;
+        var binaryDir = Directory.GetCurrentDirectory();
+        Console.WriteLine("Starting LIB.EXE");
+        var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
+        var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
+        files = files.Where(s => s.EndsWith(".obj")).ToArray();
+        files = files.Select(GetShorterPath).ToArray();
+        Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
+        var libCommandFileContent = "/nologo /verbose ";
+        if (currentTarget.Type == ModuleType.DynamicLibrary)
+        {
+            libCommandFileContent += "/DLL ";
+        }
+
+        libCommandFileContent +=
+            $"/OUT:\"{Path.Join(binaryDir, "lib", currentTarget.Name + ".lib")}\" ";
+
+        foreach (var libPath in currentTarget.LibrarySearchPaths)
+        {
+            libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
+            libCommandFileContent += " ";
+        }
+
+        foreach (var file in files)
+        {
+            libCommandFileContent += $"\"{file}\"";
+            libCommandFileContent += " ";
+        }
+
+        foreach (var library in currentTarget.Libraries)
+        {
+            var mutableLibrary = library;
+            if (File.Exists(library))
+            {
+                mutableLibrary = Path.GetFullPath(mutableLibrary);
+            }
+
+            libCommandFileContent += '"' + mutableLibrary.Replace("\\", @"\\") + '"';
+            libCommandFileContent += " ";
+        }
+
+        var tempFile = Path.GetTempFileName();
+        using (var commandFile = File.OpenWrite(tempFile))
+        {
+            using var writer = new StreamWriter(commandFile);
+            writer.Write(libCommandFileContent);
+        }
+
+        Console.WriteLine("Launching lib.exe with command file content {0}", libCommandFileContent);
+        Directory.SetCurrentDirectory(binaryDir);
+        var p = new ProcessStartInfo()
+        {
+            Arguments = $"@\"{tempFile}\"",
+            FileName = libExe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = binaryDir,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            CreateNoWindow = true
+        };
+        var process = new Process();
+        process.StartInfo = p;
+        process.Start();
+        Console.WriteLine(process.StandardOutput.ReadToEnd());
+        Console.WriteLine(process.StandardError.ReadToEnd());
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            Console.WriteLine("LIB.exe failed, exit code: {0}", process.ExitCode);
+            return;
+        }
+
+        Console.WriteLine("LIB.exe finished");
+        var objFiles = Directory.GetFiles(binaryDir, "*.obj");
+        foreach (var file in objFiles)
+            File.Delete(file);
+    }
+
+    public override void Generate(string what, ModuleContext moduleContext)
+    {
+        base.Generate(what, moduleContext);
+        if (what == "CompileCommandsJSON")
+        {
+            GenerateCompileCommands(moduleContext);
+        }
+    }
+
+
+    private void GenerateCompileCommands(ModuleContext moduleContext)
+    {
+        var command = GenerateCompileCommand(false);
+        command = command.Replace(@"\\", @"\");
+        var currentTarget = GetCurrentTarget();
+        if (currentTarget == null)
+            return;
+        var jsonArr = new JsonArray();
+        foreach (var source in currentTarget.SourceFiles)
+        {
+            var jsonObj = new JsonObject
+            {
+                { "directory", Directory.GetCurrentDirectory() },
+                { "command", GetExecutablePath() + " " + command + " " + $"\"{source}\"" },
+                { "file", source }
+            };
+            jsonArr.Add(jsonObj);
+        }
+
+        JsonSerializerOptions opts = new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = true
+        };
+        string serialized = JsonSerializer.Serialize(jsonArr, opts);
+        File.WriteAllText(Path.Join(moduleContext.ModuleDirectory, "compile_commands.json"), serialized);
     }
 }
