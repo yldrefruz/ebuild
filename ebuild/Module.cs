@@ -1,4 +1,9 @@
 ﻿using System.Runtime.InteropServices;
+// ReSharper disable FieldCanBeMadeReadOnly.Global
+// ReSharper disable CollectionNeverUpdated.Global
+// ReSharper disable MemberCanBePrivate.Global
+// ReSharper disable FieldCanBeMadeReadOnly.Local
+// ReSharper disable ConvertToConstant.Global
 
 namespace ebuild;
 
@@ -28,27 +33,22 @@ public class Module
     {
         _moduleContext = context;
         Name = "unknown";
+        Type = ModuleType.Executable;
 
         CompilerName = null;
         ForceNamedCompiler = false;
         Architecture = RuntimeInformation.OSArchitecture;
         CppStandard = CXXStd.CXX20;
 
-        //TODO: set a setting for this. or make the call from the child classes.
         AppendAutoDetectedSourceFiles();
     }
 
 
-    public string[] GetFilesFromSourceDirectory(string searchPattern)
+    public IEnumerable<string> GetFilesFromSourceDirectory(string searchPattern)
     {
-        string directory = _moduleContext.ModuleDirectory;
-        string sourceDir = Path.Join(directory, "Source");
-        if (!Directory.Exists(sourceDir))
-        {
-            return Array.Empty<string>();
-        }
-
-        return Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
+        var directory = _moduleContext.ModuleDirectory;
+        var sourceDir = Path.Join(directory, "Source");
+        return !Directory.Exists(sourceDir) ? Array.Empty<string>() : Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
     }
 
     public void AppendAutoDetectedSourceFiles()

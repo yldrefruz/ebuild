@@ -628,9 +628,34 @@ public class MsvcCompiler : Compiler
     {
         var command = GenerateCompileCommand(false);
         command = command.Replace(@"\\", @"\");
+        command += "/D__CLANGD__ ";
         var currentTarget = GetCurrentTarget();
         if (currentTarget == null)
             return;
+        switch (currentTarget.CppStandard)
+        {
+            case CXXStd.CXX14:
+                command += "/D_MSVC_LANG=201402L ";
+                break;
+            case CXXStd.CXX15:
+                command += "/D_MSVC_LANG=201703L ";
+                break;
+            case CXXStd.CXX20:
+                command += "/D_MSVC_LANG=202002L ";
+                break;
+            case CXXStd.CXXLatest:
+                command += "/D_MSVC_LANG=202410L ";
+                break;
+            case CXXStd.C11:
+                break;
+            case CXXStd.C17:
+                break;
+            case CXXStd.CLatest:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
         var jsonArr = new JsonArray();
         foreach (var source in currentTarget.SourceFiles)
         {
