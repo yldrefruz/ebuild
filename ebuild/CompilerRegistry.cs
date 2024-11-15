@@ -19,7 +19,7 @@ public class CompilerRegistry
 
     private static Compiler? GetCompilerFromEnv()
     {
-        var environmentVariable = System.Environment.GetEnvironmentVariable("COMPILER");
+        var environmentVariable = Environment.GetEnvironmentVariable("COMPILER");
         return environmentVariable != null ? GetCompilerByName(environmentVariable) : null;
     }
 
