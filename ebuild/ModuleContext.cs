@@ -6,4 +6,7 @@ public class ModuleContext
     public string ModuleFile = "";
     public string ModuleDirectory = "";
     public bool Watching = false;
+
+    public string OutputDir = "";
+    public string BuildType = "";
 }

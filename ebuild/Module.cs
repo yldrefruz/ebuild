@@ -1,4 +1,5 @@
 ﻿using System.Runtime.InteropServices;
+
 // ReSharper disable FieldCanBeMadeReadOnly.Global
 // ReSharper disable CollectionNeverUpdated.Global
 // ReSharper disable MemberCanBePrivate.Global
@@ -24,6 +25,7 @@ public class Module
     public bool UseDefaultIncludes = true;
     public bool UseDefaultLibraryPaths = true;
     public bool UseDefaultLibraries = true;
+    public bool AddDefaultSourcePaths = true;
     public ModuleType Type;
     public string Name;
 
@@ -40,7 +42,8 @@ public class Module
         Architecture = RuntimeInformation.OSArchitecture;
         CppStandard = CXXStd.CXX20;
 
-        AppendAutoDetectedSourceFiles();
+        if (AddDefaultSourcePaths)
+            AppendAutoDetectedSourceFiles();
     }
 
 
@@ -48,7 +51,9 @@ public class Module
     {
         var directory = _moduleContext.ModuleDirectory;
         var sourceDir = Path.Join(directory, "Source");
-        return !Directory.Exists(sourceDir) ? Array.Empty<string>() : Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
+        return !Directory.Exists(sourceDir)
+            ? Array.Empty<string>()
+            : Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
     }
 
     public void AppendAutoDetectedSourceFiles()
