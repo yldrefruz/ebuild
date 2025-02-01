@@ -18,7 +18,7 @@ public abstract class ModuleBase
     public AccessLimitList<IncludeDirectory> Includes = new();
 
     /// <summary> Forced include directories to use. </summary>
-    public AccessLimitList<IncludeDirectory> ForceIncludes = new(); 
+    public AccessLimitList<string> ForceIncludes = new(); 
 
     // TODO: ability to add CMake targets as modules
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
@@ -36,7 +36,9 @@ public abstract class ModuleBase
     /// <summary>The library paths to search for. Absolute or relevant</summary>
     public AccessLimitList<string> LibrarySearchPaths = new();
 
-    /// <summary>The name of the module.</summary> 
+    public List<string> SourceFiles = new();
+
+    /// <summary>The name of the module. If null will automatically deduce the name from the file name.</summary> 
     public string? Name;
 
     /// <summary>The cpp standard this module uses.</summary>

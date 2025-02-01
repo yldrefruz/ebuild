@@ -1,26 +1,65 @@
-﻿namespace ebuild.Compilers;
+﻿using ebuild.api;
+using ebuild.Platforms;
 
-public class NullCompiler : Compiler
+namespace ebuild.Compilers;
+
+[Compiler("Null")]
+public class NullCompiler : CompilerBase
 {
     private static NullCompiler? _compiler;
 
+    private class EmptyModule : ModuleBase
+    {
+        public EmptyModule(ModuleContext context) : base(context)
+        {
+        }
+    }
+
     public static NullCompiler Get()
     {
-        return _compiler ??= new NullCompiler();
+        if (_compiler != null) return _compiler;
+        var nullFile = "/dev/null";
+        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        {
+            nullFile = "NUL:";
+        }
+
+        var moduleContext = new ModuleContext(new FileInfo(nullFile), "NoBuild", PlatformRegistry.GetHostPlatform(),
+            CompilerRegistry.GetInstance().GetNameOfCompiler<NullCompiler>(),
+            new FileInfo(nullFile));
+        var module = new EmptyModule(moduleContext);
+        _compiler = new NullCompiler(module, moduleContext);
+        return _compiler;
     }
 
-    public override string GetName()
+    public NullCompiler(ModuleBase module, ModuleContext moduleContext) : base(module, moduleContext)
     {
-        return "NullCompiler";
     }
 
-    public override string GetExecutablePath()
+    public override bool IsAvailable(PlatformBase platform)
     {
-        return "";
+        return true;
     }
 
-    public override void Compile(ModuleContext context)
+    public override List<ModuleBase> HasCircularDependency()
     {
-        throw new NotImplementedException();
+        return new List<ModuleBase>();
+    }
+
+    public override bool Generate(string type)
+    {
+        //The NullCompiler doesn't have any generate capability.
+        return false;
+    }
+
+    public override Task<bool> Setup()
+    {
+        //Setup is empty
+        return Task.FromResult(false);
+    }
+
+    public override Task<bool> Compile()
+    {
+        return Task.FromResult(false);
     }
 }

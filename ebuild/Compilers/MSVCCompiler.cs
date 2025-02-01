@@ -5,11 +5,12 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ebuild.api;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
-
-public class MsvcCompiler : Compiler
+[Compiler("Msvc")]
+public class MsvcCompiler : CompilerBase
 {
     private readonly string _msvcCompilerRoot;
     private readonly string _msvcToolRoot;
@@ -753,4 +754,29 @@ public class MsvcCompiler : Compiler
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         WriteIndented = true
     };
+
+    public override bool IsAvailable(PlatformBase platform)
+    {
+        return platform.GetName() == "Win32";
+    }
+
+    public override List<ModuleBase> HasCircularDependency()
+    {
+        throw new NotImplementedException();
+    }
+
+    public override bool Generate(string type)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override Task<bool> Setup()
+    {
+        throw new NotImplementedException();
+    }
+
+    public override Task<bool> Compile()
+    {
+        throw new NotImplementedException();
+    }
 }

@@ -98,6 +98,21 @@ public static class EBuild
         return toLoadDllFile;
     }
 
+    public static string? FindEBuildApiDll()
+    {
+        var bFound = false;
+        var currentDir = Directory.GetParent(Assembly.GetExecutingAssembly().Location);
+        while (!bFound && currentDir != null)
+        {
+            if (currentDir.GetFiles("ebuild.api.dll").Length > 0)
+                bFound = true;
+            else
+                currentDir = Directory.GetParent(currentDir.FullName);
+        }
+
+        return !bFound ? null : Path.Join(currentDir!.FullName, "ebuild.api.dll");
+    }
+    
     private static string? FindEBuildDll()
     {
         var bFound = false;

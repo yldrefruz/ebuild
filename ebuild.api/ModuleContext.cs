@@ -6,7 +6,7 @@
 // ReSharper disable ClassNeverInstantiated.Global
 namespace ebuild.api;
 
-public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase platform, CompilerBase compiler,
+public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase platform, string compilerName,
     FileInfo outputBinary)
 {
     public class Message(string value, Message.SeverityTypes type)
@@ -35,7 +35,7 @@ public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase p
     public string BuildType = buildType;
 
     public PlatformBase Platform = platform;
-    public CompilerBase Compiler = compiler;
+    public string CompilerName = compilerName;
     public List<ModuleBase> DependantModules = new();
 
 
