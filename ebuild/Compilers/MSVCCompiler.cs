@@ -209,6 +209,17 @@ public class MsvcCompiler : CompilerBase
             command += " ";
         }
 
+        foreach (var inc in CurrentModule.ForceIncludes.Joined())
+        {
+            var finalInc = GetShorterPath(inc);
+            if (inc.Contains(' ') && !inc.Trim().StartsWith('\"'))
+            {
+                finalInc = '"' + finalInc + '"';
+            }
+
+            command += $"/FI {finalInc} ";
+        }
+
         if (bSourceFiles)
         {
             foreach (var source in CurrentModule.SourceFiles)
