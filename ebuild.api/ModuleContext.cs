@@ -4,10 +4,13 @@
 // ReSharper disable CollectionNeverQueried.Global
 // ReSharper disable FieldCanBeMadeReadOnly.Global
 // ReSharper disable ClassNeverInstantiated.Global
+
+using System.Runtime.InteropServices;
+
 namespace ebuild.api;
 
 public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase platform, string compilerName,
-    FileInfo outputBinary)
+    FileInfo? outputBinary, Architecture? targetArchitecture = null)
 {
     public class Message(string value, Message.SeverityTypes type)
     {
@@ -31,12 +34,13 @@ public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase p
     public DirectoryInfo? ModuleDirectory => ModuleFile.Directory;
 
     public FileInfo ModuleFile { get; } = moduleFile;
-    public FileInfo OutputBinary = outputBinary;
+    public FileInfo? OutputBinary = outputBinary;
     public string BuildType = buildType;
 
     public PlatformBase Platform = platform;
     public string CompilerName = compilerName;
     public List<ModuleBase> DependantModules = new();
+    public Architecture TargetArchitecture = targetArchitecture ?? RuntimeInformation.OSArchitecture;
 
 
     public List<Message> Messages = new();

@@ -1,12 +1,14 @@
-﻿using System.Reflection;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 
 namespace ebuild.api;
 
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
 public abstract class PlatformBase
 {
-    private string _name;
+    private readonly string _name;
 
-    public PlatformBase()
+    protected PlatformBase()
     {
         if (GetType().GetCustomAttribute(typeof(PlatformAttribute)) is PlatformAttribute pa)
         {
@@ -20,12 +22,13 @@ public abstract class PlatformBase
 
     public class NoPlatformAttributeException : Exception
     {
-        private Type _type;
-        public NoPlatformAttributeException(Type type) : base(
-            $"{type.Name} doesn't have the `Platform` attribute."
+        public readonly Type ForType;
+
+        public NoPlatformAttributeException(Type forType) : base(
+            $"{forType.Name} doesn't have the `Platform` attribute."
         )
         {
-            _type = type;
+            ForType = forType;
         }
     }
 

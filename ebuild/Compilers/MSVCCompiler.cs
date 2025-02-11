@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,11 +10,13 @@ using ebuild.api;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
+
 [Compiler("Msvc")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
 public class MsvcCompiler : CompilerBase
 {
-    private readonly string _msvcCompilerRoot;
-    private readonly string _msvcToolRoot;
+    private string _msvcCompilerRoot = string.Empty;
+    private string _msvcToolRoot = string.Empty;
 
     private static readonly ILogger Logger =
         LoggerFactory
@@ -83,54 +86,6 @@ public class MsvcCompiler : CompilerBase
         return true;
     }
 
-    public MsvcCompiler()
-    {
-        if (!VswhereExists())
-        {
-            if (!DownloadVsWhere())
-            {
-                throw new Exception(
-                    $"Can't download vswhere from {VsWhereUrl}. Please check your internet connection.");
-            }
-        }
-
-        var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
-        var args =
-            "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.Tools.x86.x64\" -property installationPath";
-        var vsWhereProcess = new Process();
-        var processStartInfo = new ProcessStartInfo
-        {
-            Arguments = args,
-            FileName = vsWhereExecutable,
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            CreateNoWindow = true
-        };
-        vsWhereProcess.StartInfo = processStartInfo;
-        vsWhereProcess.Start();
-        var vsWhereOutput = vsWhereProcess.StandardOutput.ReadToEnd();
-        vsWhereProcess.WaitForExit();
-        vsWhereOutput = vsWhereOutput.Trim();
-        var version = File.ReadAllText(Path.Join(vsWhereOutput, "VC", "Auxiliary", "Build",
-            "Microsoft.VCToolsVersion.default.txt"));
-        version = version.Trim();
-        _msvcToolRoot = Path.Join(vsWhereOutput, "VC", "Tools", "MSVC", version);
-        // ReSharper disable once StringLiteralTypo
-        var host = "Hostx86";
-        if (Environment.Is64BitOperatingSystem)
-        {
-            // ReSharper disable once StringLiteralTypo
-            host = "Hostx64";
-        }
-
-        _msvcCompilerRoot = Path.Join(_msvcToolRoot, "bin", host);
-    }
-
-
-    public override string GetName()
-    {
-        return "MSVC";
-    }
 
     public override string GetExecutablePath()
     {
@@ -147,7 +102,7 @@ public class MsvcCompiler : CompilerBase
     private string GetMsvcCompilerBin()
     {
         var targetArch = "x86";
-        if (GetCurrentTarget() != null && GetCurrentTarget()!.Architecture == Architecture.X64)
+        if (CurrentModule is { Context.TargetArchitecture: Architecture.X64 })
             targetArch = "x64";
         var msvcCompilerBin = Path.Join(_msvcCompilerRoot, targetArch);
         return msvcCompilerBin;
@@ -156,7 +111,7 @@ public class MsvcCompiler : CompilerBase
     private string GetMsvcCompilerLib()
     {
         var targetArch = "x86";
-        if (GetCurrentTarget() != null && GetCurrentTarget()!.Architecture == Architecture.X64)
+        if (CurrentModule is { Context.TargetArchitecture: Architecture.X64 })
             targetArch = "x64";
         return Path.Join(_msvcToolRoot, "lib", targetArch);
     }
@@ -171,71 +126,48 @@ public class MsvcCompiler : CompilerBase
     }
 
     // ReSharper disable once UnusedParameter.Local
-    private void MutateTarget(ModuleContext moduleContext)
+    private void MutateTarget()
     {
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null)
+        if (CurrentModule == null)
             return;
-        if (currentTarget.UseDefaultIncludes)
-        {
-            currentTarget.Includes.AddRange(new[]
-            {
-                Path.Join(_msvcToolRoot, "include"),
-                //TODO: programatically find this.
-                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt",
-                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um",
-                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared",
-                @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt"
-            });
-        }
 
-        if (currentTarget.UseDefaultLibraryPaths)
+        CurrentModule.Includes.Public.AddRange(new[]
         {
-            currentTarget.LibrarySearchPaths.AddRange(new[]
-            {
-                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64",
-                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64",
-                @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt_enclave\x64",
-                GetMsvcCompilerLib()
-            });
-        }
+            new IncludeDirectory(Path.Join(_msvcToolRoot, "include")),
+            //TODO: programatically find this.
+            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt"),
+            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um"),
+            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared"),
+            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt")
+        });
 
-        if (currentTarget.UseDefaultLibraries)
+        CurrentModule.LibrarySearchPaths.Public.AddRange(new[]
         {
-            currentTarget.Libraries.AddRange(new string[]
-                { });
-        }
+            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64",
+            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64",
+            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt_enclave\x64",
+            GetMsvcCompilerLib()
+        });
     }
 
-    private string CppStandardToArg(CXXStd std)
+    private string CppStandardToArg(CppStandards standard)
     {
-        string value = "/std:";
-        switch (std)
+        var value = "/std:";
+        switch (standard)
         {
-            case CXXStd.CXX14:
+            case CppStandards.Cpp14:
                 value += "c++14";
                 break;
-            case CXXStd.CXX15:
+            case CppStandards.Cpp17:
                 value += "c++17";
                 break;
-            case CXXStd.CXX20:
+            default:
+            case CppStandards.Cpp20:
                 value += "c++20";
                 break;
-            case CXXStd.CXXLatest:
+            case CppStandards.CppLatest:
                 value += "c++latest";
                 break;
-            case CXXStd.C11:
-                value += "c11";
-                break;
-            case CXXStd.C17:
-                value += "c17";
-                break;
-            case CXXStd.CLatest:
-                // ReSharper disable once StringLiteralTypo
-                value += "clatest";
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(std), std, null);
         }
 
         return value;
@@ -243,11 +175,10 @@ public class MsvcCompiler : CompilerBase
 
     private string GenerateCompileCommand(bool bSourceFiles)
     {
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null) throw new NullReferenceException();
+        if (CurrentModule == null) throw new NullReferenceException();
         // ReSharper disable once StringLiteralTypo
-        var command = "/nologo /c /EHsc " + CppStandardToArg(currentTarget.CppStandard) + " ";
-        if (IsDebugBuild())
+        var command = "/nologo /c /EHsc  " + CppStandardToArg(CurrentModule.CppStandard) + " ";
+        if (CurrentModule.Context.BuildType.ToLowerInvariant() == "debug")
         {
             command += "/MDd ";
         }
@@ -263,7 +194,7 @@ public class MsvcCompiler : CompilerBase
         }
 
 
-        foreach (var definition in currentTarget.Definitions)
+        foreach (var definition in CurrentModule.Definitions.Joined())
         {
             command += $"/D\"{definition}\"";
             command += " ";
@@ -271,7 +202,8 @@ public class MsvcCompiler : CompilerBase
 
         var binaryDir = Directory.GetCurrentDirectory();
         Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
-        foreach (var toInclude in currentTarget.Includes.Select(include => $"/I\"{GetShorterPath(include)}\""))
+        foreach (var toInclude in CurrentModule.Includes.Joined()
+                     .Select(include => $"/I\"{GetShorterPath(include.Directory)}\""))
         {
             command += toInclude;
             command += " ";
@@ -279,7 +211,7 @@ public class MsvcCompiler : CompilerBase
 
         if (bSourceFiles)
         {
-            foreach (var source in currentTarget.SourceFiles)
+            foreach (var source in CurrentModule.SourceFiles)
             {
                 command += '"' + GetShorterPath(source) + '"';
                 command += " ";
@@ -291,20 +223,101 @@ public class MsvcCompiler : CompilerBase
         return command;
     }
 
-    public override void Compile(ModuleContext moduleContext)
+    public override async Task<bool> Setup()
     {
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null) return;
+        if (!VswhereExists())
+        {
+            if (!DownloadVsWhere())
+            {
+                throw new Exception(
+                    $"Can't download vswhere from {VsWhereUrl}. Please check your internet connection.");
+            }
+        }
+
+        var toolRoot = Config.Get().MsvcPath ?? string.Empty;
+        if (string.IsNullOrEmpty(toolRoot))
+        {
+            var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
+            const string args =
+                "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
+            var vsWhereProcess = new Process();
+            var processStartInfo = new ProcessStartInfo
+            {
+                Arguments = args,
+                FileName = vsWhereExecutable,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                CreateNoWindow = true
+            };
+            vsWhereProcess.StartInfo = processStartInfo;
+            vsWhereProcess.Start();
+            toolRoot = await vsWhereProcess.StandardOutput.ReadToEndAsync();
+            await vsWhereProcess.WaitForExitAsync();
+        }
+
+        toolRoot = toolRoot.Trim();
+
+
+        var version = Config.Get().MsvcVersion ?? string.Empty;
+        version = version.Trim();
+        if (!File.Exists(Path.Join(toolRoot, "VC", "Tools", "MSVC", version)))
+        {
+            Logger.LogInformation("(Config) => Msvc Version: {version} is not found, trying to find a valid version.",
+                string.IsNullOrEmpty(version) ? version : "<Empty>");
+        }
+
+        if (string.IsNullOrEmpty(version))
+        {
+            Dictionary<Version, string> versionDict = new();
+            foreach (var file in Directory.GetFiles(Path.Join(toolRoot, "VC",
+                         "Auxiliary", "Build"), "Microsoft.VCToolsVersion.*default.txt"))
+            {
+                var content = await File.ReadAllTextAsync(file);
+                if (Version.TryParse(content, out var foundVer))
+                {
+                    versionDict.Add(foundVer, content);
+                    using (Logger.BeginScope("Version Discovery"))
+                    {
+                        Logger.LogInformation("Found version: {content}", content);
+                    }
+                }
+            }
+
+            var latestVer = versionDict.Keys.ToList().OrderDescending().FirstOrDefault();
+            if (latestVer != null) version = versionDict[latestVer];
+        }
+
+        version = version.Trim();
+        if (string.IsNullOrEmpty(version))
+        {
+            Logger.LogCritical("Couldn't find a valid msvc installation.");
+            return false;
+        }
+
+        _msvcToolRoot = Path.Join(toolRoot, "VC", "Tools", "MSVC", version);
+        var host = "Hostx86";
+        if (Environment.Is64BitOperatingSystem)
+        {
+            host = "Hostx64";
+        }
+
+        _msvcCompilerRoot = Path.Join(_msvcToolRoot, "bin", host);
+        return true;
+    }
+
+    public override async Task<bool> Compile()
+    {
+        if (CurrentModule == null) return false;
         Logger.LogInformation("Compiling program");
-        MutateTarget(moduleContext);
+        MutateTarget();
         var commandFileContent = GenerateCompileCommand(true);
 
         var commandFilePath = Path.GetTempFileName();
-        using (var commandFile = File.OpenWrite(commandFilePath))
+        await using (var commandFile = File.OpenWrite(commandFilePath))
         {
-            using var writer = new StreamWriter(commandFile);
-            writer.Write(commandFileContent);
-            writer.Flush();
+            await using var writer = new StreamWriter(commandFile);
+            await writer.WriteAsync(commandFileContent);
+            await writer.FlushAsync();
             commandFile.Flush();
         }
 
@@ -328,7 +341,7 @@ public class MsvcCompiler : CompilerBase
         {
             Logger.LogError("Can't start cl.exe");
             Environment.ExitCode = 1;
-            return;
+            return false;
         }
 
         proc.OutputDataReceived += (_, args) =>
@@ -345,7 +358,7 @@ public class MsvcCompiler : CompilerBase
         proc.Start();
         proc.BeginErrorReadLine();
         proc.BeginOutputReadLine();
-        proc.WaitForExit();
+        await proc.WaitForExitAsync();
 
         if (File.Exists(commandFilePath))
             File.Delete(commandFilePath);
@@ -354,13 +367,11 @@ public class MsvcCompiler : CompilerBase
             Logger.LogError("Compilation Failed, {exitCode}", proc.ExitCode);
             ClearObjectAndPdbFiles();
 
-            return;
+            return false;
         }
 
-        Thread.Sleep(500);
-
         Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
-        switch (currentTarget.Type)
+        switch (CurrentModule.Type)
         {
             case ModuleType.StaticLibrary:
             {
@@ -379,6 +390,7 @@ public class MsvcCompiler : CompilerBase
         }
 
         ProcessAdditionalDependencies();
+        return true;
     }
 
     private static void ClearObjectAndPdbFiles(bool shouldLog = true)
@@ -404,7 +416,7 @@ public class MsvcCompiler : CompilerBase
     private void ProcessAdditionalDependencies()
     {
         Logger.LogInformation("Copying files/directories");
-        foreach (var additionalDependency in GetCurrentTarget()!.AdditionalDependencies)
+        foreach (var additionalDependency in CurrentModule!.AdditionalDependencies.Joined())
         {
             switch (additionalDependency.Type)
             {
@@ -470,8 +482,7 @@ public class MsvcCompiler : CompilerBase
 
     private void CallLinkExe()
     {
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null)
+        if (CurrentModule == null)
             return;
         var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
         Logger.LogInformation("Linking program");
@@ -480,9 +491,9 @@ public class MsvcCompiler : CompilerBase
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
         files = files.Select(GetShorterPath).ToArray();
         // ReSharper disable once StringLiteralTypo
-        var libCommandFileContent = "/nologo /verbose ";
+        var libCommandFileContent = "/nologo /verbose  ";
         var outType = ".exe";
-        switch (currentTarget.Type)
+        switch (CurrentModule.Type)
         {
             case ModuleType.ExecutableWin32:
                 libCommandFileContent += "/SUBSYSTEM:WINDOWS ";
@@ -501,9 +512,9 @@ public class MsvcCompiler : CompilerBase
         }
 
         libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, currentTarget.Name + outType)}\" ";
+            $"/OUT:\"{Path.Join(binaryDir, CurrentModule.Name + outType)}\" ";
 
-        foreach (var libPath in currentTarget.LibrarySearchPaths)
+        foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
         {
             // ReSharper disable once StringLiteralTypo
             libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
@@ -516,7 +527,7 @@ public class MsvcCompiler : CompilerBase
             libCommandFileContent += " ";
         }
 
-        foreach (var library in currentTarget.Libraries)
+        foreach (var library in CurrentModule.Libraries.Joined())
         {
             var mutableLibrary = library;
             if (File.Exists(library))
@@ -601,8 +612,7 @@ public class MsvcCompiler : CompilerBase
 
     private void CallLibExe()
     {
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null)
+        if (CurrentModule == null)
             return;
         var binaryDir = Directory.GetCurrentDirectory();
         var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
@@ -611,16 +621,16 @@ public class MsvcCompiler : CompilerBase
         files = files.Select(GetShorterPath).ToArray();
         Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
         // ReSharper disable once StringLiteralTypo
-        var libCommandFileContent = "/nologo /verbose ";
-        if (currentTarget.Type == ModuleType.DynamicLibrary)
+        var libCommandFileContent = "/nologo /verbose  ";
+        if (CurrentModule.Type == ModuleType.DynamicLibrary)
         {
             libCommandFileContent += "/DLL ";
         }
 
         libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, "lib", currentTarget.Name + ".lib")}\" ";
+            $"/OUT:\"{Path.Join(binaryDir, "lib", CurrentModule.Name + ".lib")}\" ";
 
-        foreach (var libPath in currentTarget.LibrarySearchPaths)
+        foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
         {
             // ReSharper disable once StringLiteralTypo
             libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
@@ -633,7 +643,7 @@ public class MsvcCompiler : CompilerBase
             libCommandFileContent += " ";
         }
 
-        foreach (var library in currentTarget.Libraries)
+        foreach (var library in CurrentModule.Libraries.Joined())
         {
             var mutableLibrary = library;
             if (File.Exists(library))
@@ -696,57 +706,53 @@ public class MsvcCompiler : CompilerBase
         }
     }
 
-    public override void Generate(string what, ModuleContext moduleContext)
+
+    public override async Task<bool> Generate(string what)
     {
-        base.Generate(what, moduleContext);
         if (what == "CompileCommandsJSON")
         {
-            GenerateCompileCommands(moduleContext);
+            return await GenerateCompileCommands();
         }
+
+        return false;
     }
 
 
-    private void GenerateCompileCommands(ModuleContext moduleContext)
+    private async Task<bool> GenerateCompileCommands()
     {
         var command = GenerateCompileCommand(false);
         command = command.Replace(@"\\", @"\");
         command += "/D__CLANGD__ ";
-        var currentTarget = GetCurrentTarget();
-        if (currentTarget == null)
-            return;
-        switch (currentTarget.CppStandard)
+        if (CurrentModule == null)
+            return false;
+        switch (CurrentModule.CppStandard)
         {
-            case CXXStd.CXX14:
+            case CppStandards.Cpp14:
                 command += "/D_MSVC_LANG=201402L ";
                 break;
-            case CXXStd.CXX15:
+            case CppStandards.Cpp17:
                 command += "/D_MSVC_LANG=201703L ";
                 break;
-            case CXXStd.CXX20:
+            case CppStandards.Cpp20:
                 command += "/D_MSVC_LANG=202002L ";
                 break;
-            case CXXStd.CXXLatest:
+            case CppStandards.CppLatest:
                 command += "/D_MSVC_LANG=202410L ";
                 break;
-            case CXXStd.C11:
-                break;
-            case CXXStd.C17:
-                break;
-            case CXXStd.CLatest:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
         }
 
         var jsonArr =
-            currentTarget.SourceFiles.Select(source => new JsonObject
+            CurrentModule.SourceFiles.Select(source => new JsonObject
             {
                 { "directory", Directory.GetCurrentDirectory() },
                 { "command", GetExecutablePath() + " " + command + " " + $"\"{source}\"" },
                 { "file", source }
             });
         var serialized = JsonSerializer.Serialize(jsonArr, CompileCommandsJsonSerializerOptions);
-        File.WriteAllText(Path.Join(moduleContext.ModuleDirectory, "compile_commands.json"), serialized);
+        await File.WriteAllTextAsync(
+            Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", "compile_commands.json"),
+            serialized);
+        return true;
     }
 
     private static readonly JsonSerializerOptions CompileCommandsJsonSerializerOptions = new JsonSerializerOptions
@@ -760,22 +766,7 @@ public class MsvcCompiler : CompilerBase
         return platform.GetName() == "Win32";
     }
 
-    public override List<ModuleBase> HasCircularDependency()
-    {
-        throw new NotImplementedException();
-    }
-
-    public override bool Generate(string type)
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<bool> Setup()
-    {
-        throw new NotImplementedException();
-    }
-
-    public override Task<bool> Compile()
+    public override List<ModuleBase> FindCircularDependencies()
     {
         throw new NotImplementedException();
     }

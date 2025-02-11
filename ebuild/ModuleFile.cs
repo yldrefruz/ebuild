@@ -8,11 +8,10 @@ namespace ebuild;
 
 public class ModuleFile
 {
-    private Type? _moduleType = null;
-    private Assembly? _loadedAssembly = null;
-    private DependencyTree? _dependencyTree = null;
+    private Type? _moduleType;
+    private Assembly? _loadedAssembly;
 
-    public class ConstructorNotFoundException : Exception
+    private class ConstructorNotFoundException : Exception
     {
         private Type _type;
 
@@ -23,7 +22,7 @@ public class ModuleFile
         }
     }
 
-    public class ModuleFileException : Exception
+    private class ModuleFileException : Exception
     {
         private string _file;
 
@@ -33,7 +32,7 @@ public class ModuleFile
         }
     }
 
-    public class ModuleFileCompileException : Exception
+    private class ModuleFileCompileException : Exception
     {
         private string _file;
 
@@ -43,21 +42,21 @@ public class ModuleFile
         }
     }
 
-    public ModuleBase CreateModuleInstance(ModuleContext context)
+    public async Task<ModuleBase> CreateModuleInstance(ModuleContext context)
     {
-        var constructor = GetModuleType().GetConstructor(BindingFlags.Public, new[] { typeof(ModuleContext) });
+        var constructor = (await GetModuleType()).GetConstructor(new[] { typeof(ModuleContext) });
         if (constructor == null)
-            throw new ConstructorNotFoundException(GetModuleType()!);
+            throw new ConstructorNotFoundException(await GetModuleType());
         var created = constructor.Invoke(new object?[] { context });
         return (ModuleBase)created;
     }
 
-    public Type GetModuleType()
+    private async Task<Type> GetModuleType()
     {
         if (_moduleType != null)
             return _moduleType;
         if (_loadedAssembly == null)
-            _loadedAssembly = CompileAndLoad();
+            _loadedAssembly = await CompileAndLoad();
         foreach (var type in _loadedAssembly.GetTypes())
         {
             if (!type.IsSubclassOf(typeof(ModuleBase))) continue;
@@ -92,11 +91,6 @@ public class ModuleFile
         _path = Path.Join(loc, reference.GetPureFile());
     }
 
-    public DependencyTree GetDependencyTree()
-    {
-        DependencyTree dependencyTree = new DependencyTree();
-    }
-
 
     public bool HasChanged()
     {
@@ -122,14 +116,13 @@ public class ModuleFile
         if (lastEditTime == null) return;
         var fi = GetCachedEditTimeFile();
         fi.Directory?.Create();
-        fi.Create();
-        using FileStream fs = fi.OpenWrite();
+        using var fs = fi.Create();
         fs.Write(Encoding.UTF8.GetBytes(lastEditTime.ToString()!));
     }
 
     private FileInfo GetCachedEditTimeFile() => new(Path.Join(Directory, ".ebuild", Name, "last_edit.cache"));
 
-    public DateTime? GetCachedEditTime()
+    private DateTime? GetCachedEditTime()
     {
         var fi = GetCachedEditTimeFile();
         if (fi.Exists)
@@ -140,24 +133,24 @@ public class ModuleFile
         return null;
     }
 
-    public Assembly CompileAndLoad()
+    private async Task<Assembly> CompileAndLoad()
     {
         var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(Directory, ".ebuild"));
-        var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, "module", Name + ".dll");
+        var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, "module", Name + ".ebuild_module.dll");
         if (!HasChanged())
-            return Assembly.Load(toLoadDllFile);
+            return Assembly.LoadFile(toLoadDllFile);
         var logger = LoggerFactory
             .Create(builder => builder.AddConsole().AddSimpleConsole(options => options.SingleLine = true))
             .CreateLogger("Module File Compiler");
 
-        var ebuildApiDll = EBuild.FindEBuildApiDll();
+        var ebuildApiDll = EBuild.FindEBuildApiDllPath();
 
         var moduleProjectFileLocation =
             Path.Join(localEBuildDirectory.FullName, "module", "intermediate", Name + ".csproj");
         System.IO.Directory.CreateDirectory(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName);
-        using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
+        await using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
         {
-            using (var writer = new StreamWriter(moduleProjectFile))
+            await using (var writer = new StreamWriter(moduleProjectFile))
             {
                 // ReSharper disable StringLiteralTypo
                 var moduleProjectContent = $"""
@@ -179,7 +172,7 @@ public class ModuleFile
                                             </Project>
                                             """;
                 // ReSharper restore StringLiteralTypo
-                writer.Write(moduleProjectContent);
+                await writer.WriteAsync(moduleProjectContent);
             }
         }
 
@@ -214,7 +207,7 @@ public class ModuleFile
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
-        p.WaitForExit();
+        await p.WaitForExitAsync();
         if (p.ExitCode != 0)
         {
             //Error happened
@@ -226,6 +219,6 @@ public class ModuleFile
 
         File.Copy(dllFile, toLoadDllFile, true);
         UpdateCachedEditTime();
-        return Assembly.Load(toLoadDllFile);
+        return Assembly.LoadFile(toLoadDllFile);
     }
 }

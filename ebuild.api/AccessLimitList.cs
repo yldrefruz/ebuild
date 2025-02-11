@@ -2,8 +2,8 @@
 
 public class AccessLimitList<T>
 {
-    public List<T> Public = new();
-    public List<T> Private = new();
+    public readonly List<T> Public = new();
+    public readonly List<T> Private = new();
 
     public void Add(AccessLimit limit, T value)
     {
@@ -22,5 +22,13 @@ public class AccessLimitList<T>
     public void Add(T value)
     {
         Add(AccessLimit.Private, value);
+    }
+
+
+    public List<T> Joined()
+    {
+        List<T> all = new(Public);
+        all.AddRange(Private);
+        return all;
     }
 }

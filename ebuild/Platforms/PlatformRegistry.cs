@@ -1,19 +1,22 @@
 ﻿using System.Reflection;
 using ebuild.api;
+using Microsoft.Extensions.Logging;
 
 namespace ebuild.Platforms;
 
 public class PlatformRegistry
 {
+    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("Platform Registry");
+
     public class PlatformNotFoundException : Exception
     {
-        private string _name;
+        public readonly string Name;
 
         public PlatformNotFoundException(string name) : base(
             $"{name} is not found."
         )
         {
-            _name = name;
+            Name = name;
         }
     }
 
@@ -40,14 +43,14 @@ public class PlatformRegistry
             case PlatformID.WinCE:
                 return GetInstance().Get<Win32Platform>();
             case PlatformID.Unix:
-                //TODO: Unix Platform
-                //return GetInstance().Get<UnixPlatform>();
+            //TODO: Unix Platform
+            //return GetInstance().Get<UnixPlatform>();
             case PlatformID.Xbox:
-                //TODO: Xbox Platform
-                //return GetInstance().Get<XboxPlatform>();
+            //TODO: Xbox Platform
+            //return GetInstance().Get<XboxPlatform>();
             case PlatformID.MacOSX:
-                //TODO: Mac Platform
-                //return GetInstance().Get<MacPlatform>();
+            //TODO: Mac Platform
+            //return GetInstance().Get<MacPlatform>();
             case PlatformID.Other:
             default:
                 throw new ArgumentOutOfRangeException();
@@ -79,11 +82,24 @@ public class PlatformRegistry
     {
         if (!platformType.IsSubclassOf(typeof(PlatformBase)))
             throw new ArgumentException("platformType is not a subclass of PlatformBase");
-        var constructor = platformType.GetConstructor(BindingFlags.Public, new Type[] { });
-        if (constructor == null)
-            throw new ConstructorNotFoundException(platformType);
+        Logger.LogInformation("Registering platform type \"{type_name}\"", platformType.FullName);
+        var constructor = platformType.GetConstructor(Type.EmptyTypes);
+        if (constructor == null) throw new ConstructorNotFoundException(platformType);
         var platform = constructor.Invoke(null);
         _platformList.Add(((PlatformBase)platform).GetName(), (PlatformBase)platform);
+        Logger.LogInformation("Register complete.");
+    }
+
+    public void RegisterAllFromAssembly(Assembly assembly)
+    {
+        foreach (var type in assembly.GetTypes())
+        {
+            if (!type.IsSubclassOf(typeof(PlatformBase))) continue;
+            if (type.GetCustomAttribute<PlatformAttribute>() != null)
+            {
+                Register(type);
+            }
+        }
     }
 
     public void Register<T>() where T : PlatformBase

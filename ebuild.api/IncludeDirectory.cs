@@ -1,6 +1,7 @@
 ﻿namespace ebuild.api;
 
-public class IncludeDirectory(string Directory)
+public class IncludeDirectory(string directory)
 {
-    DirectoryInfo ToDirectoryInfo() => new DirectoryInfo(Directory);
+    public readonly string Directory = directory;
+    DirectoryInfo ToDirectoryInfo() => new DirectoryInfo(directory);
 }

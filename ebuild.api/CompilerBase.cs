@@ -4,26 +4,19 @@
 // ReSharper disable NotAccessedField.Local
 // ReSharper disable NotAccessedField.Global
 
+using System.Reflection;
+
 namespace ebuild.api;
 
 public abstract class CompilerBase
 {
-    public CompilerBase(ModuleBase module, ModuleContext moduleContext)
-    {
-        CurrentModule = module;
-        CurrentModuleContext = moduleContext;
-    }
-
     /// <summary>
     /// The module we are currently working to compile
     /// </summary>
-    protected ModuleBase CurrentModule;
+    protected ModuleBase? CurrentModule;
 
-    /// <summary>
-    /// The module context applied to the module.
-    /// This helps us have the information about where we will output the files.
-    /// </summary>
-    protected ModuleContext CurrentModuleContext;
+    public readonly List<string> AdditionalFlags = new();
+
 
     /// <summary>
     /// Checks if the compiler can be run in this state. 
@@ -36,14 +29,14 @@ public abstract class CompilerBase
     /// Checks if the module has circular dependency.
     /// </summary>
     /// <returns>The list of modules with the circular dependency.</returns>
-    public abstract List<ModuleBase> HasCircularDependency();
+    public abstract List<ModuleBase> FindCircularDependencies();
 
     /// <summary>
     /// Generate the "thing" that we are asked for.
     /// </summary>
     /// <param name="type">the type of the "thing" we are asked for. For example can be <code>GenerateCompileCommands</code> for creating compile_commands.json</param>
     /// <returns>whether the generation was successful.</returns>
-    public abstract bool Generate(string type);
+    public abstract Task<bool> Generate(string type);
 
     /// <summary>
     /// asynchronous task for setting up the compiler.
@@ -56,4 +49,18 @@ public abstract class CompilerBase
     /// </summary>
     /// <returns>Whether the compilation was successful.</returns>
     public abstract Task<bool> Compile();
+
+    public abstract string GetExecutablePath();
+
+    public void SetModule(ModuleBase module)
+    {
+        CurrentModule = module;
+    }
+
+    public string GetName()
+    {
+        var compilerAttribute = GetType().GetCustomAttribute<CompilerAttribute>();
+        if (compilerAttribute == null) throw new InvalidOperationException("get name requires CompilerAttribute");
+        return compilerAttribute.GetName();
+    }
 }

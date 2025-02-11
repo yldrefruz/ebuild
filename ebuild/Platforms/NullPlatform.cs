@@ -1,22 +1,21 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
+using ebuild.api;
 
 namespace ebuild.Platforms;
 
-public class NullPlatform : Platform
+[Platform("Null")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+public class NullPlatform : PlatformBase
 {
     private static NullPlatform? _platform;
 
-    public override Compiler? GetDefaultCompiler()
+    public override string? GetDefaultCompilerName()
     {
-        throw new NotImplementedException();
+        return "Null";
     }
 
-    public override string GetName()
-    {
-        return "NullPlatform";
-    }
-
-    public static Platform Get()
+    public static PlatformBase Get()
     {
         return _platform ??= new NullPlatform();
     }

@@ -8,6 +8,6 @@ public class Win32Platform : PlatformBase
     public override string? GetDefaultCompilerName()
     {
         //TODO: Load from ebuild.ini
-        return "MSVC";
+        return "Msvc";
     }
 }

@@ -24,15 +24,16 @@ public class NullCompiler : CompilerBase
             nullFile = "NUL:";
         }
 
-        var moduleContext = new ModuleContext(new FileInfo(nullFile), "NoBuild", PlatformRegistry.GetHostPlatform(),
+        var moduleContext = new ModuleContext(new FileInfo(nullFile), "no_build", PlatformRegistry.GetHostPlatform(),
             CompilerRegistry.GetInstance().GetNameOfCompiler<NullCompiler>(),
             new FileInfo(nullFile));
         var module = new EmptyModule(moduleContext);
-        _compiler = new NullCompiler(module, moduleContext);
+        _compiler = new NullCompiler();
+        _compiler.SetModule(module);
         return _compiler;
     }
 
-    public NullCompiler(ModuleBase module, ModuleContext moduleContext) : base(module, moduleContext)
+    public NullCompiler() : base()
     {
     }
 
@@ -41,15 +42,15 @@ public class NullCompiler : CompilerBase
         return true;
     }
 
-    public override List<ModuleBase> HasCircularDependency()
+    public override List<ModuleBase> FindCircularDependencies()
     {
         return new List<ModuleBase>();
     }
 
-    public override bool Generate(string type)
+    public override Task<bool> Generate(string type)
     {
         //The NullCompiler doesn't have any generate capability.
-        return false;
+        return Task.FromResult(false);
     }
 
     public override Task<bool> Setup()
@@ -61,5 +62,10 @@ public class NullCompiler : CompilerBase
     public override Task<bool> Compile()
     {
         return Task.FromResult(false);
+    }
+
+    public override string GetExecutablePath()
+    {
+        return "";
     }
 }

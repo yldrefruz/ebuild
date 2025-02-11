@@ -1,16 +1,11 @@
-﻿// ReSharper disable UnusedMember.Global
-// ReSharper disable UnusedParameter.Global
-// ReSharper disable UnusedParameter.Local
-// ReSharper disable PublicConstructorInAbstractClass
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
+
 namespace ebuild.api;
 
-public abstract class ModuleBase
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+public abstract class ModuleBase(ModuleContext context)
 {
-    public ModuleBase(ModuleContext context)
-    {
-    }
-    
-
     /// <summary>The definitions to use.</summary>
     public AccessLimitList<Definition> Definitions = new();
 
@@ -18,7 +13,7 @@ public abstract class ModuleBase
     public AccessLimitList<IncludeDirectory> Includes = new();
 
     /// <summary> Forced include directories to use. </summary>
-    public AccessLimitList<string> ForceIncludes = new(); 
+    public AccessLimitList<string> ForceIncludes = new();
 
     // TODO: ability to add CMake targets as modules
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
@@ -47,10 +42,14 @@ public abstract class ModuleBase
     /// <summary> The type of this module</summary>
     public ModuleType Type;
 
+    public ModuleContext Context = context;
+
     /*
      * Functions to check support.
      */
     public virtual bool IsPlatformSupported(PlatformBase inPlatformBase) => true;
 
     public virtual bool IsCompilerSupported(CompilerBase inCompilerBase) => true;
+
+    public virtual bool IsArchitectureSupported(Architecture architecture) => true;
 }
