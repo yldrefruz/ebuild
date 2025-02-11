@@ -177,7 +177,7 @@ public class MsvcCompiler : CompilerBase
     {
         if (CurrentModule == null) throw new NullReferenceException();
         // ReSharper disable once StringLiteralTypo
-        var command = "/nologo /c /EHsc  " + CppStandardToArg(CurrentModule.CppStandard) + " ";
+        var command = "/nologo /c /EHsc " + CppStandardToArg(CurrentModule.CppStandard) + " ";
         if (CurrentModule.Context.BuildType.ToLowerInvariant() == "debug")
         {
             command += "/MDd ";
@@ -523,7 +523,7 @@ public class MsvcCompiler : CompilerBase
         }
 
         libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, CurrentModule.Name + outType)}\" ";
+            $"/OUT:\"{Path.Join(binaryDir, (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\" ";
 
         foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
         {
@@ -625,9 +625,9 @@ public class MsvcCompiler : CompilerBase
     {
         if (CurrentModule == null)
             return;
-        var binaryDir = Directory.GetCurrentDirectory();
+        var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
         var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
-        var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
+        var files = Directory.GetFiles(binaryDir);
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
         files = files.Select(GetShorterPath).ToArray();
         Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
@@ -639,7 +639,7 @@ public class MsvcCompiler : CompilerBase
         }
 
         libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, "lib", CurrentModule.Name + ".lib")}\" ";
+            $"/OUT:\"{Path.Join(binaryDir, "lib", (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\" ";
 
         foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
         {
@@ -675,7 +675,7 @@ public class MsvcCompiler : CompilerBase
 
         using (Logger.BeginScope("Lib"))
         {
-            Logger.LogError("Launching lib.exe with command file content {libCommandFileContent}",
+            Logger.LogDebug("Launching lib.exe with command file content {libCommandFileContent}",
                 libCommandFileContent);
             Directory.SetCurrentDirectory(binaryDir);
             var p = new ProcessStartInfo()
@@ -693,7 +693,6 @@ public class MsvcCompiler : CompilerBase
             var process = new Process();
             process.StartInfo = p;
             process.OutputDataReceived += (_, args) => Logger.LogInformation("{data}", args.Data);
-            process.OutputDataReceived += (_, args) => Logger.LogError("{data}", args.Data);
             process.Start();
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();

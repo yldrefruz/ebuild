@@ -1,5 +1,8 @@
-﻿namespace ebuild.api;
+﻿using System.Diagnostics.CodeAnalysis;
 
+namespace ebuild.api;
+
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
 public class Definition(string inValue)
 {
     public string GetName() => HasValue() ? inValue.Split("=")[0] : inValue;
