@@ -1,4 +1,4 @@
-﻿namespace ebuild;
+﻿namespace ebuild.api;
 
 public class AdditionalDependency
 {
