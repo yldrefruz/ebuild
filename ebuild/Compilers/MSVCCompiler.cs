@@ -133,12 +133,12 @@ public class MsvcCompiler : CompilerBase
 
         CurrentModule.Includes.Public.AddRange(new[]
         {
-            new IncludeDirectory(Path.Join(_msvcToolRoot, "include")),
+            Path.Join(_msvcToolRoot, "include"),
             //TODO: programatically find this.
-            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt"),
-            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um"),
-            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared"),
-            new IncludeDirectory(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt")
+            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt",
+            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um",
+            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared",
+            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt"
         });
 
         CurrentModule.LibrarySearchPaths.Public.AddRange(new[]
@@ -203,7 +203,7 @@ public class MsvcCompiler : CompilerBase
         var binaryDir = Directory.GetCurrentDirectory();
         Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
         foreach (var toInclude in CurrentModule.Includes.Joined()
-                     .Select(include => $"/I\"{GetShorterPath(include.Directory)}\""))
+                     .Select(include => $"/I\"{GetShorterPath(include)}\""))
         {
             command += toInclude;
             command += " ";

@@ -10,7 +10,7 @@ public abstract class ModuleBase(ModuleContext context)
     public AccessLimitList<Definition> Definitions = new();
 
     /// <summary>Include directories to use.</summary>
-    public AccessLimitList<IncludeDirectory> Includes = new();
+    public AccessLimitList<string> Includes = new();
 
     /// <summary> Forced include directories to use. </summary>
     public AccessLimitList<string> ForceIncludes = new();
