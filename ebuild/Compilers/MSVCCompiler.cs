@@ -178,7 +178,7 @@ public class MsvcCompiler : CompilerBase
         if (CurrentModule == null) throw new NullReferenceException();
         // ReSharper disable once StringLiteralTypo
         var command = "/nologo /c /EHsc " + CppStandardToArg(CurrentModule.CppStandard) + " ";
-        if (CurrentModule.Context.BuildType.ToLowerInvariant() == "debug")
+        if (CurrentModule.Context.BuildConfiguration.ToLowerInvariant() == "debug")
         {
             command += "/MDd ";
         }
@@ -186,12 +186,12 @@ public class MsvcCompiler : CompilerBase
         {
             command += "/MD ";
         }
-
-        if (AdditionalFlags.Count != 0)
+        //TODO: Additional Compilation Commands and Linker Commands.
+        /*if (AdditionalFlags.Count != 0)
         {
             command += string.Join(" ", AdditionalFlags);
             command += " ";
-        }
+        }*/
 
 
         foreach (var definition in CurrentModule.Definitions.Joined())
@@ -717,18 +717,18 @@ public class MsvcCompiler : CompilerBase
     }
 
 
-    public override async Task<bool> Generate(string what)
+    public override async Task<bool> Generate(string what, Object? data)
     {
         if (what == "CompileCommandsJSON")
         {
-            return await GenerateCompileCommands();
+            return await GenerateCompileCommands((string?)data);
         }
 
         return false;
     }
 
 
-    private async Task<bool> GenerateCompileCommands()
+    private async Task<bool> GenerateCompileCommands(string? outFile)
     {
         var command = GenerateCompileCommand(false);
         command = command.Replace(@"\\", @"\");
@@ -743,6 +743,7 @@ public class MsvcCompiler : CompilerBase
             case CppStandards.Cpp17:
                 command += "/D_MSVC_LANG=201703L ";
                 break;
+            default:
             case CppStandards.Cpp20:
                 command += "/D_MSVC_LANG=202002L ";
                 break;
@@ -760,7 +761,7 @@ public class MsvcCompiler : CompilerBase
             });
         var serialized = JsonSerializer.Serialize(jsonArr, CompileCommandsJsonSerializerOptions);
         await File.WriteAllTextAsync(
-            Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", "compile_commands.json"),
+            Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", outFile),
             serialized);
         return true;
     }

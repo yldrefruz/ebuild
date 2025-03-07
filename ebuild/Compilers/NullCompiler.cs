@@ -33,10 +33,6 @@ public class NullCompiler : CompilerBase
         return _compiler;
     }
 
-    public NullCompiler() : base()
-    {
-    }
-
     public override bool IsAvailable(PlatformBase platform)
     {
         return true;
@@ -47,7 +43,7 @@ public class NullCompiler : CompilerBase
         return new List<ModuleBase>();
     }
 
-    public override Task<bool> Generate(string type)
+    public override Task<bool> Generate(string type, object? data = null)
     {
         //The NullCompiler doesn't have any generate capability.
         return Task.FromResult(false);

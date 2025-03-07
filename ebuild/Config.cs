@@ -11,15 +11,8 @@ public class Config
 
     /// <summary>
     /// The preferred compiler to use. If not found will fallback to platform preferred compiler.
-    /// This can be a fatal error, configure with <see cref="IsPreferredCompilerNotFoundFatal"/>
     /// </summary>
-    public string PreferredCompilerName = string.Empty;
-
-    /// <summary>
-    /// If the preferred compiler is not found should ebuild exit with a fatal error.
-    /// <seealso cref="PreferredCompilerName"/>
-    /// </summary>
-    public bool IsPreferredCompilerNotFoundFatal = true;
+    public string? PreferredCompilerName = string.Empty;
 
     /// <summary>
     /// The msvc version to use. Empty or "latest" for using the latest version available.
@@ -51,6 +44,8 @@ public class Config
     /// downloading the project at run-time.
     /// </summary>
     public List<string>? TrustedGithubRepositories;
+
+    public string DefaultBuildConfiguration = "release";
 
     /// <summary>
     /// Setup the defaults.

@@ -1,5 +1,8 @@
-﻿using System.Reflection;
+﻿using System.CommandLine.Invocation;
+using System.Reflection;
 using ebuild.api;
+using ebuild.Platforms;
+using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
 
@@ -44,6 +47,67 @@ public class CompilerRegistry
 
     public static CompilerRegistry GetInstance() => Instance;
 
+    public class CompilerInstancingParams(string moduleFile)
+    {
+        public readonly string ModuleFile = moduleFile;
+        public string Configuration = Config.Get().DefaultBuildConfiguration;
+        public string CompilerName = PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ?? "Null";
+        public ILogger? Logger;
+        public List<string>? AdditionalCompilerOptions;
+        public List<string>? AdditionalLinkerOptions;
+
+        /// <summary>
+        /// Create a CompilerInstancingParams from the command line arguments and options.
+        /// The logger will be null if created this way
+        /// </summary>
+        /// <param name="context">the context to use for creation</param>
+        /// <returns></returns>
+        public static CompilerInstancingParams FromOptionsAndArguments(InvocationContext context)
+        {
+            return new CompilerInstancingParams(
+                context.ParseResult.GetValueForArgument(CompilerCreationUtilities.ModuleArgument))
+            {
+                Configuration = context.ParseResult.GetValueForOption(CompilerCreationUtilities.ConfigurationOption) ??
+                                "Null",
+                Logger = null,
+                CompilerName = context.ParseResult.GetValueForOption(CompilerCreationUtilities.CompilerName) ??
+                               GetDefaultCompilerName(),
+                AdditionalCompilerOptions =
+                    context.ParseResult.GetValueForOption(CompilerCreationUtilities.AdditionalCompilerOptions),
+                AdditionalLinkerOptions =
+                    context.ParseResult.GetValueForOption(CompilerCreationUtilities.AdditionalLinkerOptions)
+            };
+        }
+    }
+
+    public static string GetDefaultCompilerName() => Config.Get().PreferredCompilerName ??
+                                                     PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ??
+                                                     "Null";
+
+    public static async Task<CompilerBase> CreateInstanceFor(CompilerInstancingParams instancingParams)
+    {
+        var moduleContext = new ModuleContext(new FileInfo(instancingParams.ModuleFile),
+            instancingParams.Configuration,
+            PlatformRegistry.GetHostPlatform(),
+            instancingParams.CompilerName,
+            null);
+        var moduleFile = new ModuleFile(instancingParams.ModuleFile);
+        var createdModule = await moduleFile.CreateModuleInstance(moduleContext);
+        var compiler = await GetInstance().Create(instancingParams.CompilerName);
+        instancingParams.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
+            createdModule.Name ?? createdModule.GetType().Name, compiler.GetName(),
+            compiler.GetExecutablePath());
+        compiler.SetModule(createdModule);
+        var targetWorkingDir = Path.Join(moduleFile.Directory, "Binaries");
+        Directory.CreateDirectory(targetWorkingDir);
+        Directory.SetCurrentDirectory(targetWorkingDir);
+        if (instancingParams.AdditionalCompilerOptions != null)
+            compiler.AdditionalCompilerOptions.AddRange(instancingParams.AdditionalCompilerOptions!);
+        if (instancingParams.AdditionalLinkerOptions != null)
+            compiler.AdditionalLinkerOptions.AddRange(instancingParams.AdditionalLinkerOptions!);
+        return compiler;
+    }
+
     public async Task<CompilerBase> Create(string name)
     {
         if (!_compilerTypeList.TryGetValue(name, out var compilerType))
@@ -61,6 +125,7 @@ public class CompilerRegistry
         {
             throw new ApplicationException("Compiler was created successfully, but setup was failed.");
         }
+
         return created;
     }
 

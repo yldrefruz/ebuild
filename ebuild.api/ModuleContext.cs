@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 namespace ebuild.api;
 
-public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase platform, string compilerName,
+public class ModuleContext(FileInfo moduleFile, string buildConfiguration, PlatformBase platform, string compilerName,
     FileInfo? outputBinary, Architecture? targetArchitecture = null)
 {
     public class Message(string value, Message.SeverityTypes type)
@@ -35,7 +35,7 @@ public class ModuleContext(FileInfo moduleFile, string buildType, PlatformBase p
 
     public FileInfo ModuleFile { get; } = moduleFile;
     public FileInfo? OutputBinary = outputBinary;
-    public string BuildType = buildType;
+    public string BuildConfiguration = buildConfiguration;
 
     public PlatformBase Platform = platform;
     public string CompilerName = compilerName;

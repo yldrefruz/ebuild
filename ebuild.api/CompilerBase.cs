@@ -15,8 +15,8 @@ public abstract class CompilerBase
     /// </summary>
     protected ModuleBase? CurrentModule;
 
-    public readonly List<string> AdditionalFlags = new();
-
+    public readonly List<string> AdditionalCompilerOptions = new();
+    public readonly List<string> AdditionalLinkerOptions = new();
 
     /// <summary>
     /// Checks if the compiler can be run in this state. 
@@ -35,8 +35,9 @@ public abstract class CompilerBase
     /// Generate the "thing" that we are asked for.
     /// </summary>
     /// <param name="type">the type of the "thing" we are asked for. For example can be <code>GenerateCompileCommands</code> for creating compile_commands.json</param>
+    /// <param name="data">the additional data to use</param>
     /// <returns>whether the generation was successful.</returns>
-    public abstract Task<bool> Generate(string type);
+    public abstract Task<bool> Generate(string type, object? data = null);
 
     /// <summary>
     /// asynchronous task for setting up the compiler.
