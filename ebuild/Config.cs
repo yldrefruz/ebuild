@@ -47,6 +47,10 @@ public class Config
 
     public string DefaultBuildConfiguration = "release";
 
+    public LogLevel MinLogLevel = LogLevel.Information;
+    public LogLevel CheckCommandLogLevel = LogLevel.None;
+
+
     /// <summary>
     /// Setup the defaults.
     /// </summary>
@@ -84,15 +88,13 @@ public class Config
     public void Save()
     {
         Directory.CreateDirectory(Directory.GetParent(LocalFile)!.FullName);
-        using var fs = new FileStream(LocalFile, FileMode.Create);
+        using var fs = new FileStream(LocalFile, FileMode.Create, FileAccess.Write);
         _serializer.Serialize(fs, this);
-        Logger.LogInformation("Saving config file: {fileName}", LocalFile);
     }
 
     public static Config? Load()
     {
-        using var fs = new FileStream(LocalFile, FileMode.OpenOrCreate);
-        Logger.LogInformation("Loading config file: {fileName}", LocalFile);
+        using var fs = new FileStream(LocalFile, FileMode.OpenOrCreate, FileAccess.Read);
         return (Config?)_serializer.Deserialize(fs);
     }
 }

@@ -84,20 +84,26 @@ public class CompilerRegistry
                                                      PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ??
                                                      "Null";
 
-    public static async Task<CompilerBase> CreateInstanceFor(CompilerInstancingParams instancingParams)
+    public static async Task<CompilerBase?> CreateInstanceFor(CompilerInstancingParams instancingParams)
     {
         var moduleContext = new ModuleContext(new FileInfo(instancingParams.ModuleFile),
             instancingParams.Configuration,
             PlatformRegistry.GetHostPlatform(),
             instancingParams.CompilerName,
             null);
-        var moduleFile = new ModuleFile(instancingParams.ModuleFile);
+        var moduleFile = ModuleFile.Get(instancingParams.ModuleFile);
         var createdModule = await moduleFile.CreateModuleInstance(moduleContext);
+        if (createdModule == null)
+        {
+            instancingParams.Logger?.LogError("Can't create compiler instance.");
+            return null;
+        }
+
         var compiler = await GetInstance().Create(instancingParams.CompilerName);
         instancingParams.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
-            createdModule.Name ?? createdModule.GetType().Name, compiler.GetName(),
+            createdModule?.Name ?? createdModule?.GetType().Name, compiler.GetName(),
             compiler.GetExecutablePath());
-        compiler.SetModule(createdModule);
+        compiler.SetModule(createdModule!);
         var targetWorkingDir = Path.Join(moduleFile.Directory, "Binaries");
         Directory.CreateDirectory(targetWorkingDir);
         Directory.SetCurrentDirectory(targetWorkingDir);

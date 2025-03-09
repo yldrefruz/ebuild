@@ -82,12 +82,12 @@ public class PlatformRegistry
     {
         if (!platformType.IsSubclassOf(typeof(PlatformBase)))
             throw new ArgumentException("platformType is not a subclass of PlatformBase");
-        Logger.LogInformation("Registering platform type \"{type_name}\"", platformType.FullName);
+        //Logger.LogInformation("Registering platform type \"{type_name}\"", platformType.FullName);
         var constructor = platformType.GetConstructor(Type.EmptyTypes);
         if (constructor == null) throw new ConstructorNotFoundException(platformType);
         var platform = constructor.Invoke(null);
         _platformList.Add(((PlatformBase)platform).GetName(), (PlatformBase)platform);
-        Logger.LogInformation("Register complete.");
+        //Logger.LogInformation("Register complete.");
     }
 
     public void RegisterAllFromAssembly(Assembly assembly)

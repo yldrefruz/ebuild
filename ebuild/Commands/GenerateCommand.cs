@@ -25,8 +25,9 @@ public class GenerateCommand
 
         private async Task<int> Execute(InvocationContext context)
         {
-            CompilerBase cp = await CompilerRegistry.CreateInstanceFor(
+            var cp = await CompilerRegistry.CreateInstanceFor(
                 CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context));
+            if (cp == null) return 2;
             return await cp.Generate("CompileCommandsJSON", context.ParseResult.GetValueForOption(_file)) ? 0 : 1;
         }
 

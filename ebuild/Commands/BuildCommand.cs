@@ -19,9 +19,11 @@ public class BuildCommand
         var compilerInstancingParams = CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context);
         compilerInstancingParams.Logger = _buildLogger;
         var compiler = await CompilerRegistry.CreateInstanceFor(compilerInstancingParams);
+        if (compiler == null)
+            return;
         var noCompile = context.ParseResult.GetValueForOption(_noCompile);
         if (!noCompile)
-            await compiler.Compile();
+            await compiler!.Compile();
     }
 
     public BuildCommand()

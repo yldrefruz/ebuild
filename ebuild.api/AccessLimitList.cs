@@ -5,6 +5,18 @@ public class AccessLimitList<T>
     public readonly List<T> Public = new();
     public readonly List<T> Private = new();
 
+    public List<T> GetLimited(AccessLimit limit)
+    {
+        switch (limit)
+        {
+            default:
+            case AccessLimit.Private:
+                return Private;
+            case AccessLimit.Public:
+                return Public;
+        }
+    }
+
     public void Add(AccessLimit limit, T value)
     {
         switch (limit)
