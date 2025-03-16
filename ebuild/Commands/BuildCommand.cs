@@ -1,8 +1,7 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
-using ebuild.api;
+using System.CommandLine.Parsing;
 using ebuild.Compilers;
-using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Commands;
@@ -13,6 +12,10 @@ public class BuildCommand
 
     private readonly Command _command = new("build", "build the specified module");
     private readonly Option<bool> _noCompile = new("--noCompile", () => false, "disable compilation");
+    private readonly Option<bool> _clean = new("--clean", () => false, "clean compilation");
+
+    private readonly Option<int> _processCount =
+        new(new[] { "--process-count", "-p" }, description: "the multi process count");
 
     private async Task Execute(InvocationContext context)
     {
@@ -22,13 +25,19 @@ public class BuildCommand
         if (compiler == null)
             return;
         var noCompile = context.ParseResult.GetValueForOption(_noCompile);
+        compiler.CleanCompilation = context.ParseResult.GetValueForOption(_clean);
+        compiler.ProcessCount = context.ParseResult.HasOption(_processCount)
+            ? context.ParseResult.GetValueForOption(_processCount)
+            : null;
         if (!noCompile)
-            await compiler!.Compile();
+            await compiler.Compile();
     }
 
     public BuildCommand()
     {
         _command.AddOption(_noCompile);
+        _command.AddOption(_clean);
+        _command.AddOption(_processCount);
         _command.AddCompilerCreationParams();
 
         _command.SetHandler(Execute);

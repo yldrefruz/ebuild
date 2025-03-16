@@ -18,6 +18,9 @@ public abstract class CompilerBase
     public readonly List<string> AdditionalCompilerOptions = new();
     public readonly List<string> AdditionalLinkerOptions = new();
 
+    public bool CleanCompilation = false;
+    public int? ProcessCount = null;
+
     /// <summary>
     /// Checks if the compiler can be run in this state. 
     /// </summary>

@@ -118,10 +118,9 @@ public class MsvcCompiler : CompilerBase
 
     private static string GetShorterPath(string path)
     {
-        var fp = Path.GetFullPath(path).Replace("\\", @"\\");
+        var fp = Path.GetFullPath(path);
         //We are in binary, so we should resolve the path from the binary folder.
-        var rp = Path.GetRelativePath(Path.Join(Directory.GetCurrentDirectory(), "Binaries"), path)
-            .Replace("\\", @"\\");
+        var rp = Path.GetRelativePath(Path.Join(Directory.GetCurrentDirectory(), "Binaries"), path);
         return fp.Length > rp.Length ? rp : fp;
     }
 
@@ -177,61 +176,47 @@ public class MsvcCompiler : CompilerBase
     {
         if (CurrentModule == null) throw new NullReferenceException();
         // ReSharper disable once StringLiteralTypo
-        var command = "/nologo /c /EHsc " + CppStandardToArg(CurrentModule.CppStandard) + " ";
-        if (CurrentModule.Context.BuildConfiguration.ToLowerInvariant() == "debug")
+        ArgumentBuilder args = new();
+        args += "/nologo";
+        args += "/c";
+        args += "/EHsc";
+        args += CppStandardToArg(CurrentModule.CppStandard);
+        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
-            command += "/MDd ";
+            args += "/MDd";
+            args += "/Zi";
+            args += $"/Fd\"{Path.Join(CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
+            args += "/FS";
         }
         else
         {
-            command += "/MD ";
+            args += "/MD";
         }
+
+        if (ProcessCount != null)
+        {
+            args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
+        }
+
         //TODO: Additional Compilation Commands and Linker Commands.
-        /*if (AdditionalFlags.Count != 0)
-        {
-            command += string.Join(" ", AdditionalFlags);
-            command += " ";
-        }*/
+        args += AdditionalCompilerOptions;
 
-
-        foreach (var definition in CurrentModule.Definitions.Joined())
-        {
-            command += $"/D\"{definition}\"";
-            command += " ";
-        }
+        args += CurrentModule.Definitions.Joined().Select(definition => $"/D\"{definition}\"");
 
         var binaryDir = Directory.GetCurrentDirectory();
         Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
-        foreach (var toInclude in CurrentModule.Includes.Joined()
-                     .Select(include => $"/I\"{GetShorterPath(include)}\""))
-        {
-            command += toInclude;
-            command += " ";
-        }
 
-        foreach (var inc in CurrentModule.ForceIncludes.Joined())
-        {
-            var finalInc = GetShorterPath(inc);
-            if (inc.Contains(' ') && !inc.Trim().StartsWith('\"'))
-            {
-                finalInc = '"' + finalInc + '"';
-            }
-
-            command += $"/FI {finalInc} ";
-        }
+        args += CurrentModule.Includes.Joined().Select(include => $"/I\"{GetShorterPath(include)}\"");
+        args += CurrentModule.ForceIncludes.Joined().Select(s => $"/FI{GetShorterPath(s)}");
 
         if (bSourceFiles)
         {
-            foreach (var source in CurrentModule.SourceFiles)
-            {
-                command += '"' + GetShorterPath(source) + '"';
-                command += " ";
-            }
+            args += CurrentModule.SourceFiles.Select(GetShorterPath);
         }
 
         Directory.SetCurrentDirectory(binaryDir);
 
-        return command;
+        return args.ToString();
     }
 
     public override async Task<bool> Setup()
@@ -321,8 +306,10 @@ public class MsvcCompiler : CompilerBase
         if (CurrentModule == null) return false;
         Logger.LogInformation("Compiling program");
         MutateTarget();
-        var commandFileContent = GenerateCompileCommand(true);
 
+        var commandFileContent = GenerateCompileCommand(true);
+        //TODO: Remove this
+        Logger.LogInformation(commandFileContent);
         var commandFilePath = Path.GetTempFileName();
         await using (var commandFile = File.OpenWrite(commandFilePath))
         {
@@ -332,8 +319,11 @@ public class MsvcCompiler : CompilerBase
             commandFile.Flush();
         }
 
-        //Delete all obj files before compiling
-        ClearObjectAndPdbFiles(false);
+        if (CleanCompilation)
+        {
+            //Delete all obj files before compiling
+            ClearObjectAndPdbFiles(false);
+        }
 
         var startInfo = new ProcessStartInfo()
         {
@@ -376,7 +366,10 @@ public class MsvcCompiler : CompilerBase
         if (proc.ExitCode != 0)
         {
             Logger.LogError("Compilation Failed, {exitCode}", proc.ExitCode);
-            ClearObjectAndPdbFiles();
+            if (CleanCompilation)
+            {
+                ClearObjectAndPdbFiles();
+            }
 
             return false;
         }
@@ -386,14 +379,14 @@ public class MsvcCompiler : CompilerBase
         {
             case ModuleType.StaticLibrary:
             {
-                CallLibExe();
+                await CallLibExe();
                 break;
             }
             case ModuleType.DynamicLibrary:
             case ModuleType.Executable:
             case ModuleType.ExecutableWin32:
             {
-                CallLinkExe();
+                await CallLinkExe();
                 break;
             }
             default:
@@ -426,7 +419,7 @@ public class MsvcCompiler : CompilerBase
 
     private void ProcessAdditionalDependencies()
     {
-        Logger.LogInformation("Copying files/directories");
+        Logger.LogInformation("Processing additional dependencies");
         foreach (var additionalDependency in CurrentModule!.AdditionalDependencies.Joined())
         {
             switch (additionalDependency.Type)
@@ -491,29 +484,38 @@ public class MsvcCompiler : CompilerBase
         }
     }
 
-    private void CallLinkExe()
+    private async Task CallLinkExe()
     {
         if (CurrentModule == null)
             return;
         var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
         Logger.LogInformation("Linking program");
-        var libExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
+        ArgumentBuilder argumentBuilder = new();
+        var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
         var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
         files = files.Select(GetShorterPath).ToArray();
         // ReSharper disable once StringLiteralTypo
-        var libCommandFileContent = "/nologo /verbose  ";
+        argumentBuilder += "/nologo";
+        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
+        {
+            argumentBuilder += "/DEBUG";
+            argumentBuilder += $"/PDB:{Path.Join((CurrentModule.Name ?? CurrentModule.GetType().Name))}.pdb";
+        }
+
+        argumentBuilder += string.Join(" ", AdditionalLinkerOptions);
+
         var outType = ".exe";
         switch (CurrentModule.Type)
         {
             case ModuleType.ExecutableWin32:
-                libCommandFileContent += "/SUBSYSTEM:WINDOWS ";
+                argumentBuilder += "/SUBSYSTEM:WINDOWS";
                 break;
             case ModuleType.Executable:
-                libCommandFileContent = "/SUBSYSTEM:CONSOLE ";
+                argumentBuilder += "/SUBSYSTEM:CONSOLE";
                 break;
             case ModuleType.DynamicLibrary:
-                libCommandFileContent = "/DLL ";
+                argumentBuilder += "/DLL";
                 outType = ".dll";
                 break;
             case ModuleType.StaticLibrary:
@@ -522,50 +524,32 @@ public class MsvcCompiler : CompilerBase
                 throw new ArgumentOutOfRangeException();
         }
 
-        libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\" ";
+        argumentBuilder +=
+            $"/OUT:\"{Path.Join(binaryDir, (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\"";
 
-        foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
-        {
-            // ReSharper disable once StringLiteralTypo
-            libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
-            libCommandFileContent += " ";
-        }
+        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined()
+            .Select(current => $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
+        argumentBuilder += files;
 
-        foreach (var file in files)
-        {
-            libCommandFileContent += $"\"{file}\"";
-            libCommandFileContent += " ";
-        }
-
-        foreach (var library in CurrentModule.Libraries.Joined())
-        {
-            var mutableLibrary = library;
-            if (File.Exists(library))
-            {
-                mutableLibrary = Path.GetFullPath(mutableLibrary);
-            }
-
-            libCommandFileContent += '"' + mutableLibrary.Replace("\\", @"\\") + '"';
-            libCommandFileContent += " ";
-        }
+        argumentBuilder += CurrentModule.Libraries.Joined()
+            .Select((a) => File.Exists(Path.GetFullPath(a)) ? Path.GetFullPath(a) : a);
 
         var tempFile = Path.GetTempFileName();
-        using (var commandFile = File.OpenWrite(tempFile))
+        var argumentString = argumentBuilder.ToString();
+        await using (var commandFile = File.OpenWrite(tempFile))
         {
-            using var writer = new StreamWriter(commandFile);
-            writer.Write(libCommandFileContent);
+            await using var writer = new StreamWriter(commandFile);
+            await writer.WriteAsync(argumentString);
         }
 
-        using (Logger.BeginScope("Linking"))
+        using (Logger.BeginScope("Link"))
         {
-            Logger.LogDebug("Launching link.exe with command file content {libCommandFileContent}",
-                libCommandFileContent);
+            Logger.LogInformation("Launching link.exe with command file content {commandFileContent}", argumentString);
             Directory.SetCurrentDirectory(binaryDir);
             var p = new ProcessStartInfo()
             {
                 Arguments = $"@\"{tempFile}\"",
-                FileName = libExe,
+                FileName = linkExe,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -578,7 +562,6 @@ public class MsvcCompiler : CompilerBase
             process.StartInfo = p;
             process.OutputDataReceived += (_, args) =>
             {
-                //Ultra basic parsing for output
                 //TODO: change the parsing method. Maybe regex.
                 if (args.Data == null) return;
                 var splitData = args.Data.Split(":");
@@ -606,7 +589,7 @@ public class MsvcCompiler : CompilerBase
             process.Start();
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
-            process.WaitForExit();
+            await process.WaitForExitAsync();
             if (process.ExitCode != 0)
             {
                 Logger.LogError("link failed, exit code: {exitCode}", process.ExitCode);
@@ -621,7 +604,7 @@ public class MsvcCompiler : CompilerBase
         }
     }
 
-    private void CallLibExe()
+    private async Task CallLibExe()
     {
         if (CurrentModule == null)
             return;
@@ -632,51 +615,39 @@ public class MsvcCompiler : CompilerBase
         files = files.Select(GetShorterPath).ToArray();
         Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
         // ReSharper disable once StringLiteralTypo
-        var libCommandFileContent = "/nologo /verbose  ";
+        ArgumentBuilder argumentBuilder = new();
+        argumentBuilder += "/nologo";
         if (CurrentModule.Type == ModuleType.DynamicLibrary)
         {
-            libCommandFileContent += "/DLL ";
+            argumentBuilder += "/DLL";
         }
 
-        libCommandFileContent +=
-            $"/OUT:\"{Path.Join(binaryDir, "lib", (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\" ";
-
-        foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
+        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
-            // ReSharper disable once StringLiteralTypo
-            libCommandFileContent += $"/LIBPATH:\"{Path.GetFullPath(libPath)}\"";
-            libCommandFileContent += " ";
+            argumentBuilder += "/DEBUG";
+            argumentBuilder += $"/PDB:\"{Path.Join(CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
         }
 
-        foreach (var file in files)
-        {
-            libCommandFileContent += $"\"{file}\"";
-            libCommandFileContent += " ";
-        }
-
-        foreach (var library in CurrentModule.Libraries.Joined())
-        {
-            var mutableLibrary = library;
-            if (File.Exists(library))
-            {
-                mutableLibrary = Path.GetFullPath(mutableLibrary);
-            }
-
-            libCommandFileContent += '"' + mutableLibrary.Replace("\\", @"\\") + '"';
-            libCommandFileContent += " ";
-        }
+        argumentBuilder +=
+            $"/OUT:\"{Path.Join(binaryDir, "lib", (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\"";
+        argumentBuilder += string.Join(" ", AdditionalLinkerOptions);
+        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined().Select(s => $"/LIBPATH:\"{s}\"");
+        argumentBuilder += files;
+        argumentBuilder += CurrentModule.Libraries.Joined()
+            .Select(s => File.Exists(Path.GetFullPath(s)) ? Path.GetFullPath(s) : s);
 
         var tempFile = Path.GetTempFileName();
-        using (var commandFile = File.OpenWrite(tempFile))
+        var argumentContents = argumentBuilder.ToString();
+        await using (var commandFile = File.OpenWrite(tempFile))
         {
-            using var writer = new StreamWriter(commandFile);
-            writer.Write(libCommandFileContent);
+            await using var writer = new StreamWriter(commandFile);
+            await writer.WriteAsync(argumentContents);
         }
 
         using (Logger.BeginScope("Lib"))
         {
             Logger.LogDebug("Launching lib.exe with command file content {libCommandFileContent}",
-                libCommandFileContent);
+                argumentContents);
             Directory.SetCurrentDirectory(binaryDir);
             var p = new ProcessStartInfo()
             {
@@ -696,7 +667,7 @@ public class MsvcCompiler : CompilerBase
             process.Start();
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
-            process.WaitForExit();
+            await process.WaitForExitAsync();
 
             void CleanupLib()
             {
@@ -717,7 +688,7 @@ public class MsvcCompiler : CompilerBase
     }
 
 
-    public override async Task<bool> Generate(string what, Object? data)
+    public override async Task<bool> Generate(string what, Object? data = null)
     {
         if (what == "CompileCommandsJSON")
         {
@@ -732,7 +703,7 @@ public class MsvcCompiler : CompilerBase
     {
         var command = GenerateCompileCommand(false);
         command = command.Replace(@"\\", @"\");
-        command += "/D__CLANGD__ ";
+        command += " /D__CLANGD__ ";
         if (CurrentModule == null)
             return false;
         switch (CurrentModule.CppStandard)
