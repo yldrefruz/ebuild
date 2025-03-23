@@ -1,8 +1,10 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild;
@@ -14,7 +16,7 @@ public class ModuleFile
     private ModuleBase? _compiledModule;
 
 
-    private static Regex DotnetErrorAndWarningRegex =
+    private static readonly Regex DotnetErrorAndWarningRegex =
         new Regex(@"^(?<path>.*): \s*(?<type>error|warning)\s*(?<code>[A-Z0-9]+):\s*(?<message>.+)$");
 
 
@@ -118,15 +120,33 @@ public class ModuleFile
     }
 
     private readonly string _path;
+    private DependencyTree _dependencyTree = new();
     public string Directory => System.IO.Directory.GetParent(_path)!.FullName;
     public string FilePath => _path;
+
+    public async Task<DependencyTree?> GetDependencyTree(string buildConfiguration, PlatformBase platform,
+        string compilerName, bool compileModule = true)
+    {
+        if (_dependencyTree.IsEmpty() && !compileModule)
+        {
+            return null;
+        }
+
+        if (_dependencyTree.IsEmpty())
+        {
+            await _dependencyTree.CreateFromModuleFile(this, buildConfiguration, platform, compilerName);
+        }
+
+        return _dependencyTree;
+    }
 
     public readonly string Name;
 
     public static ModuleFile Get(string path)
     {
-        if (!File.Exists(path)) throw new ModuleFileException(path);
-        var fi = new FileInfo(path);
+        var f = TryDirToModuleFile(path, out _);
+        if (!File.Exists(f)) throw new ModuleFileException(f);
+        var fi = new FileInfo(f);
         if (_moduleFileRegistry.TryGetValue(fi.FullName, out var value))
         {
             Logger.LogDebug("Module {path} file was already cached. Using cached value", path);
@@ -138,10 +158,50 @@ public class ModuleFile
         return mf;
     }
 
+    private static string TryDirToModuleFile(string path, out string name)
+    {
+        if (File.Exists(path))
+        {
+            name = Path.GetFileNameWithoutExtension(path);
+            return path;
+        }
+
+        if (File.Exists(Path.Join(path, "index.ebuild.cs")))
+        {
+            name = new DirectoryInfo(path).Name;
+            return
+                Path.Join(path,
+                    "index.ebuild.cs"); // index.ebuild.cs is the default file name or the most preffered one. for packages from internet.
+        }
+
+        if (File.Exists(Path.Join(path, new DirectoryInfo(path).Name + ".ebuild.cs")))
+        {
+            name = new DirectoryInfo(path).Name;
+            return Path.Join(path,
+                new DirectoryInfo(path).Name +
+                ".ebuild.cs"); // package <name>.ebuild.cs is the second most preffered one.
+        }
+
+        if (File.Exists(Path.Join(path, "ebuild.cs")))
+        {
+            name = new DirectoryInfo(path).Name;
+            return Path.Join(path, "ebuild.cs"); // ebuild.cs is the third most preffered one.
+        }
+
+        name = string.Empty;
+        return string.Empty;
+    }
+
     private ModuleFile(string path)
     {
-        _path = Path.GetFullPath(path);
-        Name = Path.GetFileNameWithoutExtension(path);
+        _path = TryDirToModuleFile(Path.GetFullPath(path), out var name);
+        if (string.IsNullOrEmpty(_path))
+        {
+            throw new ModuleFileException(path);
+        }
+
+        Name = name;
+
         var lastIndexOfEbuild = Name.LastIndexOf(".ebuild", StringComparison.InvariantCultureIgnoreCase);
         if (lastIndexOfEbuild != -1)
         {
@@ -162,10 +222,32 @@ public class ModuleFile
         return l;
     }
 
+    public async Task<List<ModuleFile>> GetAllDependencies(string configuration, PlatformBase platform, string compiler)
+    {
+        List<ModuleFile> l = new();
+        ModuleContext selfContext = new(new FileInfo(_path), configuration, platform, compiler, null);
+        var module = await CreateModuleInstance(selfContext);
+        if (module == null)
+            return l;
+        l.AddRange(module.Dependencies.Joined()
+            .Select(dependency => Get(Path.GetFullPath(dependency.GetPureFile(), Directory))));
+        return l;
+    }
+
+    public async Task<bool> HasCircularDependency(string configuration, PlatformBase platform, string compiler)
+    {
+        DependencyTree? tree = await GetDependencyTree(configuration, platform, compiler);
+        if (tree == null)
+        {
+            return false;
+        }
+
+        return tree.HasCircularDependency();
+    }
 
     public bool HasChanged()
     {
-        return (GetLastEditTime() == null || GetCachedEditTime() == null) || GetLastEditTime() != GetCachedEditTime();
+        return GetLastEditTime() == null || GetCachedEditTime() == null || GetLastEditTime() != GetCachedEditTime();
     }
 
     private DateTime? GetLastEditTime()
@@ -216,7 +298,7 @@ public class ModuleFile
     private async Task<Assembly> CompileAndLoad()
     {
         var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(Directory, ".ebuild"));
-        var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, "module", Name + ".ebuild_module.dll");
+        var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, Name, Name + ".ebuild_module.dll");
         if (!HasChanged())
             return Assembly.LoadFile(toLoadDllFile);
         var logger = LoggerFactory
@@ -227,7 +309,7 @@ public class ModuleFile
         logger.LogDebug("Found ebuild api dll: {path}", ebuildApiDll);
 
         var moduleProjectFileLocation =
-            Path.Join(localEBuildDirectory.FullName, "module", "intermediate", Name + ".csproj");
+            Path.Join(localEBuildDirectory.FullName, Name, "intermediate", Name + ".ebuild_module.csproj");
         logger.LogDebug("ebuild module {name} project is created at: {path}", Name, moduleProjectFileLocation);
         System.IO.Directory.CreateDirectory(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName);
         await using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
@@ -242,7 +324,7 @@ public class ModuleFile
                                                     <TargetFramework>net8.0</TargetFramework>
                                                     <ImplicitUsings>enable</ImplicitUsings>
                                                     <Nullable>enable</Nullable>
-                                                    <AssemblyName>{Name}</AssemblyName>
+                                                    <AssemblyName>{Name + ".ebuild_module"}</AssemblyName>
                                                 </PropertyGroup>
                                                 <ItemGroup>
                                                     <Reference Include="{ebuildApiDll}"/>
@@ -256,7 +338,7 @@ public class ModuleFile
             }
         }
 
-        var moduleFileCopy = Path.Join(Directory, ".ebuild", "module", "intermediate", Name + ".ebuild_module.cs");
+        var moduleFileCopy = Path.Join(Directory, ".ebuild", Name, "intermediate", Name + ".ebuild_module.cs");
         File.Copy(_path, moduleFileCopy, true);
         Logger.LogDebug("Copied module file {og_file}, to {new_file} as intermediate for compiling", _path,
             moduleFileCopy);
@@ -322,7 +404,7 @@ public class ModuleFile
 
 
         var dllFile = Path.Join(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName, "bin/net8.0",
-            Name + ".dll");
+            Name + ".ebuild_module.dll");
         logger.LogDebug("module {name} dll is at {path}, will be copied to {new_path}", Name, dllFile, toLoadDllFile);
         File.Copy(dllFile, toLoadDllFile, true);
         UpdateCachedEditTime();
@@ -331,6 +413,20 @@ public class ModuleFile
         return Assembly.LoadFile(toLoadDllFile);
     }
 
+    public override bool Equals(object? obj)
+    {
+        if (obj is ModuleFile mf)
+        {
+            return mf.FilePath == FilePath;
+        }
+
+        return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return _path.GetHashCode();
+    }
 
     private static Dictionary<string, ModuleFile> _moduleFileRegistry = new();
 }

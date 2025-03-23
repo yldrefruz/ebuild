@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.Threading.Tasks;
 using ebuild.api;
 using ebuild.Compilers;
 using ebuild.Platforms;
@@ -33,55 +34,50 @@ public class CheckCommand
             {
                 default:
                 case CheckTypes.CircularDependency:
-                    CheckCircularDependency(CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context));
+                    await CheckCircularDependency(CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context));
                     break;
                 case CheckTypes.PrintDependencies:
-                    var compilerInstancingParams =
-                        CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context);
-                    await PrintDependencies(compilerInstancingParams, new HashSet<string>());
+                    var compilerInstancingParams = CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context);
+                    await PrintDependencies(compilerInstancingParams);
                     break;
             }
         });
     }
 
-    private void CheckCircularDependency(CompilerRegistry.CompilerInstancingParams compilerInstancingParams)
+    private async Task CheckCircularDependency(CompilerRegistry.CompilerInstancingParams compilerInstancingParams)
     {
         ModuleFile file = ModuleFile.Get(compilerInstancingParams.ModuleFile);
-        //TODO: Circular dependency
+        DependencyTree? tree = await file.GetDependencyTree(compilerInstancingParams.Configuration, PlatformRegistry.GetHostPlatform(),
+            compilerInstancingParams.CompilerName);
+        if (tree == null)
+        {
+            Logger.LogError("Failed to get dependency tree for {file}", file.FilePath);
+            return;
+        }
+        if (tree.HasCircularDependency())
+        {
+            Logger.LogError("Circular dependency detected in {file}", file.FilePath);
+            Logger.LogError("\n{circular_dependency_graph}", tree.GetCircularDependencyGraphString());
+        }
+        else
+        {
+            Logger.LogInformation("No circular dependency detected in {file}", file.FilePath);
+        }
     }
 
 
-    private async Task PrintDependencies(CompilerRegistry.CompilerInstancingParams compilerInstancingParams,
-        HashSet<string> dependentModules)
+    private async Task PrintDependencies(CompilerRegistry.CompilerInstancingParams compilerInstancingParams)
     {
         var moduleFile = ModuleFile.Get(compilerInstancingParams.ModuleFile);
-        var moduleContext = new ModuleContext(new FileInfo(compilerInstancingParams.ModuleFile),
-            compilerInstancingParams.Configuration, PlatformRegistry.GetHostPlatform(),
-            compilerInstancingParams.CompilerName, null);
-        var module = await moduleFile.CreateModuleInstance(moduleContext);
-        if (module == null)
-            return;
-        if (dependentModules.Contains(moduleFile.FilePath))
+        var depTree = await moduleFile.GetDependencyTree(compilerInstancingParams.Configuration, PlatformRegistry.GetHostPlatform(),
+            compilerInstancingParams.CompilerName);
+        if (depTree == null)
         {
+            Logger.LogError("Failed to get dependency tree for {file}", moduleFile.FilePath);
             return;
         }
-
-        Logger.Log(Config.Get().CheckCommandLogLevel, "module {name} file: {path}", module.Name, moduleFile.FilePath);
-        var dependencies = await moduleFile.GetDependencies(compilerInstancingParams.Configuration,
-            PlatformRegistry.GetHostPlatform(), compilerInstancingParams.CompilerName);
-        foreach (var cip in dependencies.Select(dependency => new CompilerRegistry.CompilerInstancingParams(
-                     Path.GetFullPath(dependency.FilePath,
-                         moduleFile.FilePath))
-                 {
-                     Configuration = compilerInstancingParams.Configuration,
-                     CompilerName = compilerInstancingParams.CompilerName,
-                     AdditionalCompilerOptions = compilerInstancingParams.AdditionalCompilerOptions,
-                     AdditionalLinkerOptions = compilerInstancingParams.AdditionalLinkerOptions,
-                     Logger = compilerInstancingParams.Logger
-                 }))
-        {
-            await PrintDependencies(cip, dependentModules);
-        }
+        Logger.LogInformation("Dependencies for {file}", moduleFile.FilePath);
+        Logger.LogInformation("\n{dependencies}", depTree.ToString());
     }
 
     public static implicit operator Command(CheckCommand c) => c._command;

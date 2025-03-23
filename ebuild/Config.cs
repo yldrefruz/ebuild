@@ -48,7 +48,7 @@ public class Config
     public string DefaultBuildConfiguration = "release";
 
     public LogLevel MinLogLevel = LogLevel.Information;
-    public LogLevel CheckCommandLogLevel = LogLevel.None;
+    public LogLevel CheckCommandLogLevel = LogLevel.Information;
 
 
     /// <summary>

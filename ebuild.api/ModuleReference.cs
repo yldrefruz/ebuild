@@ -2,7 +2,7 @@
 
 public class ModuleReference
 {
-    private string _file; // Absolute path to file
+    private readonly string _file; // Absolute path to file
 
     ModuleReference(string path)
     {
