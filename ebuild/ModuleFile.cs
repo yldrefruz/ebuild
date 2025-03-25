@@ -1,10 +1,9 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ebuild.api;
-using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild;
@@ -22,90 +21,109 @@ public class ModuleFile
 
     private class ConstructorNotFoundException : Exception
     {
-        private Type _type;
-
         public ConstructorNotFoundException(Type type) : base(
             $"{type.Name}(ModuleContext context) not found.")
         {
-            _type = type;
         }
     }
 
+    private class ModuleConstructionFailed : Exception;
+
     private class ModuleFileException : Exception
     {
-        private string _file;
-
         public ModuleFileException(string file) : base($"{file} is not a valid module file.")
         {
-            _file = file;
         }
     }
 
     private class ModuleFileCompileException : Exception
     {
-        private string _file;
-
         public ModuleFileCompileException(string file) : base($"{file} could not be compiled.")
         {
-            _file = file;
         }
     }
 
-    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("Module File");
+    private static readonly ILogger ModuleFileLogger = EBuild.LoggerFactory.CreateLogger("Module File");
+    private static readonly ILogger ModuleLogger = EBuild.LoggerFactory.CreateLogger("Module");
 
     public async Task<ModuleBase?> CreateModuleInstance(ModuleContext context)
     {
         if (_compiledModule != null)
         {
-            Logger.LogDebug("Module {name} instance already exists.", Name);
+            ModuleFileLogger.LogDebug("Module {name} instance already exists.", Name);
             return _compiledModule;
         }
 
         var moduleType = await GetModuleType();
         if (moduleType == null)
         {
-            Logger.LogError("Couldn't create module instance since module type was invalid.");
+            ModuleFileLogger.LogError("Couldn't create module instance since module type was invalid.");
             return null;
         }
 
-        Logger.LogDebug("Module type = {name}", moduleType.Name);
+        ModuleFileLogger.LogDebug("Module type = {name}", moduleType.Name);
         var constructor = moduleType.GetConstructor(new[] { typeof(ModuleContext) });
         if (constructor == null)
         {
             throw new ConstructorNotFoundException((await GetModuleType())!);
         }
 
-        Logger.LogDebug("Module constructor is: {constructor}", constructor);
+        ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
         var created = constructor.Invoke(new object?[] { context });
+        var failed = false;
+        foreach (var m in context.Messages)
+        {
+            switch (m.GetSeverity())
+            {
+                case ModuleContext.Message.SeverityTypes.Info:
+                    ModuleLogger.LogInformation("{message}", m.GetMessage());
+                    break;
+                case ModuleContext.Message.SeverityTypes.Warning:
+                    ModuleLogger.LogWarning("{message}", m.GetMessage());
+                    break;
+                case ModuleContext.Message.SeverityTypes.Error:
+                    ModuleLogger.LogError("{message}", m.GetMessage());
+                    failed = true;
+                    break;
+            }
+        }
+
+        if (failed)
+        {
+            throw new ModuleConstructionFailed();
+        }
+
         _compiledModule = (ModuleBase)created;
         return _compiledModule;
     }
+
+    public ModuleBase GetCompiledModule() => _compiledModule!;
 
     private async Task<Type?> GetModuleType()
     {
         if (_moduleType != null)
         {
-            Logger.LogDebug("Module {name} is already calculated. Using cached value.", Name);
+            ModuleFileLogger.LogDebug("Module {name} is already calculated. Using cached value.", Name);
             return _moduleType;
         }
 
         if (_loadedAssembly == null)
         {
-            Logger.LogDebug("Compiling module {name} as the assembly is not available", Name);
+            ModuleFileLogger.LogDebug("Compiling module {name} as the assembly is not available", Name);
             try
             {
                 _loadedAssembly = await CompileAndLoad();
             }
             catch (ModuleFileCompileException exception)
             {
-                Logger.LogError("Can't find the type: {message}", exception.Message);
+                ModuleFileLogger.LogError("Can't find the type: {message}", exception.Message);
                 return null;
             }
         }
 
         foreach (var type in _loadedAssembly.GetTypes())
         {
-            Logger.LogDebug("Type {name} is found in file {file}.", type.Name, type.Assembly.Location);
+            ModuleFileLogger.LogDebug("Type {name} is found in file {file}.", type.Name, type.Assembly.Location);
             if (!type.IsSubclassOf(typeof(ModuleBase))) continue;
             _moduleType = type;
             break;
@@ -120,7 +138,7 @@ public class ModuleFile
     }
 
     private readonly string _path;
-    private DependencyTree _dependencyTree = new();
+    private readonly DependencyTree _dependencyTree = new();
     public string Directory => System.IO.Directory.GetParent(_path)!.FullName;
     public string FilePath => _path;
 
@@ -140,6 +158,8 @@ public class ModuleFile
         return _dependencyTree;
     }
 
+    public DependencyTree GetDependencyTreeChecked() => _dependencyTree;
+
     public readonly string Name;
 
     public static ModuleFile Get(string path)
@@ -147,14 +167,14 @@ public class ModuleFile
         var f = TryDirToModuleFile(path, out _);
         if (!File.Exists(f)) throw new ModuleFileException(f);
         var fi = new FileInfo(f);
-        if (_moduleFileRegistry.TryGetValue(fi.FullName, out var value))
+        if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
         {
-            Logger.LogDebug("Module {path} file was already cached. Using cached value", path);
+            ModuleFileLogger.LogDebug("Module {path} file was already cached. Using cached value", path);
             return value;
         }
 
         var mf = new ModuleFile(path);
-        _moduleFileRegistry.Add(fi.FullName, mf);
+        ModuleFileRegistry.Add(fi.FullName, mf);
         return mf;
     }
 
@@ -209,28 +229,30 @@ public class ModuleFile
         }
     }
 
-    public async Task<List<ModuleFile>> GetDependencies(string configuration, PlatformBase platform, string compiler,
-        AccessLimit accessLimit = AccessLimit.Public)
+    public async Task<List<Tuple<ModuleFile, AccessLimit>>> GetDependencies(string configuration, PlatformBase platform,
+        string compiler, AccessLimit? accessLimit = null)
     {
-        List<ModuleFile> l = new();
+        List<Tuple<ModuleFile, AccessLimit>> l = new();
         ModuleContext selfContext = new(new FileInfo(_path), configuration, platform, compiler, null);
         var module = await CreateModuleInstance(selfContext);
         if (module == null)
             return l;
-        l.AddRange(module.Dependencies.GetLimited(accessLimit)
-            .Select(dependency => Get(Path.GetFullPath(dependency.GetPureFile(), Directory))));
-        return l;
-    }
+        if (accessLimit is AccessLimit.Public or null)
+        {
+            l.AddRange(module.Dependencies.GetLimited(AccessLimit.Public)
+                .Select(dependency =>
+                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetPureFile(), Directory)),
+                        AccessLimit.Public)));
+        }
 
-    public async Task<List<ModuleFile>> GetAllDependencies(string configuration, PlatformBase platform, string compiler)
-    {
-        List<ModuleFile> l = new();
-        ModuleContext selfContext = new(new FileInfo(_path), configuration, platform, compiler, null);
-        var module = await CreateModuleInstance(selfContext);
-        if (module == null)
-            return l;
-        l.AddRange(module.Dependencies.Joined()
-            .Select(dependency => Get(Path.GetFullPath(dependency.GetPureFile(), Directory))));
+        if (accessLimit is AccessLimit.Private or null)
+        {
+            l.AddRange(module.Dependencies.GetLimited(AccessLimit.Private)
+                .Select(dependency =>
+                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetPureFile(), Directory)),
+                        AccessLimit.Private)));
+        }
+
         return l;
     }
 
@@ -286,6 +308,66 @@ public class ModuleFile
         return null;
     }
 
+    private bool TryGetModuleMetaFileName(out string fileName)
+    {
+        if (File.Exists(Path.Join(Directory, $"{Name}.ebuild.meta")))
+        {
+            fileName = Path.Join(Directory, $"{Name}.ebuild.meta");
+            return true;
+        }
+
+        // The short file name only applies to the short names
+        if (IsShortFileName(out var t))
+        {
+            var mFile = Path.Join(Directory, t.Replace("cs", "meta"));
+            if (File.Exists(mFile))
+            {
+                fileName = mFile;
+                return true;
+            }
+        }
+
+        fileName = string.Empty;
+        return false;
+    }
+
+    private bool IsShortFileName(out string type)
+    {
+        var fileName = Path.GetFileName(_path);
+        if (fileName.Equals("ebuild.cs", StringComparison.InvariantCultureIgnoreCase))
+        {
+            type = "ebuild.cs";
+            return true;
+        }
+
+        if (fileName.Equals("index.ebuild.cs", StringComparison.InvariantCultureIgnoreCase))
+        {
+            type = "index.ebuild.cs";
+            return true;
+        }
+
+        type = "non-standard";
+        return false;
+    }
+
+    private ModuleMeta? _meta;
+
+    private ModuleMeta? GetModuleMeta()
+    {
+        if (_meta != null) return _meta;
+        if (!TryGetModuleMetaFileName(out var name)) return null;
+        try
+        {
+            using var fs = new FileStream(name, FileMode.Open);
+            _meta = JsonSerializer.Deserialize<ModuleMeta>(fs, JsonSerializerOptions.Default);
+        }
+        catch (FileNotFoundException)
+        {
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Compile the module file and load the assembly.
     /// There are massive security concerns about this as the loaded assembly can do whatever it wants.
@@ -307,9 +389,9 @@ public class ModuleFile
         logger.LogDebug("Compiling file, {path}", _path);
         var ebuildApiDll = EBuild.FindEBuildApiDllPath();
         logger.LogDebug("Found ebuild api dll: {path}", ebuildApiDll);
-
+        var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
         var moduleProjectFileLocation =
-            Path.Join(localEBuildDirectory.FullName, Name, "intermediate", Name + ".ebuild_module.csproj");
+            Path.Join(moduleProjectFileDir, Name + ".ebuild_module.csproj");
         logger.LogDebug("ebuild module {name} project is created at: {path}", Name, moduleProjectFileLocation);
         System.IO.Directory.CreateDirectory(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName);
         await using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
@@ -328,8 +410,17 @@ public class ModuleFile
                                                 </PropertyGroup>
                                                 <ItemGroup>
                                                     <Reference Include="{ebuildApiDll}"/>
+                                                    {GetModuleMeta()?.AdditionalReferences?.Aggregate((current, f) => current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(Directory, f))}\"/>\n") ?? string.Empty}
                                                     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0"/>
                                                     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0"/>
+                                                </ItemGroup>
+                                                <ItemGroup>
+                                                    <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _path)}"/>
+                                                    {GetModuleMeta()?.AdditionalCompilationFiles?.Aggregate((current, f) => current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(Directory, f))}\"/>\n") ?? string.Empty}
+                                                </ItemGroup>
+                                                <ItemGroup>
+                                                    <Compile Remove="**/*"/>
+                                                    <None Remove="**/*"/>
                                                 </ItemGroup>
                                             </Project>
                                             """;
@@ -338,10 +429,6 @@ public class ModuleFile
             }
         }
 
-        var moduleFileCopy = Path.Join(Directory, ".ebuild", Name, "intermediate", Name + ".ebuild_module.cs");
-        File.Copy(_path, moduleFileCopy, true);
-        Logger.LogDebug("Copied module file {og_file}, to {new_file} as intermediate for compiling", _path,
-            moduleFileCopy);
         var psi = new ProcessStartInfo
         {
             WorkingDirectory = Directory,
@@ -361,7 +448,6 @@ public class ModuleFile
         {
             if (args.Data != null) logger.LogError("{data}", args.Data);
         };
-        var messages = new HashSet<string>();
         p.OutputDataReceived += (_, args) =>
         {
             if (args.Data == null) return;
@@ -428,5 +514,5 @@ public class ModuleFile
         return _path.GetHashCode();
     }
 
-    private static Dictionary<string, ModuleFile> _moduleFileRegistry = new();
+    private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();
 }

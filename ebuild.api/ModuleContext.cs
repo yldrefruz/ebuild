@@ -18,8 +18,7 @@ public class ModuleContext(FileInfo moduleFile, string buildConfiguration, Platf
         {
             Info,
             Warning,
-            Error,
-            Fatal
+            Error
         }
 
         public SeverityTypes GetSeverity() => type;
@@ -41,7 +40,7 @@ public class ModuleContext(FileInfo moduleFile, string buildConfiguration, Platf
     public string CompilerName = compilerName;
     public List<ModuleBase> DependantModules = new();
     public Architecture TargetArchitecture = targetArchitecture ?? RuntimeInformation.OSArchitecture;
-
+    public Dictionary<string, string> Options = new();
 
     public List<Message> Messages = new();
 

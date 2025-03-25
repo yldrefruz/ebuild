@@ -116,9 +116,9 @@ public class MsvcCompiler : CompilerBase
         return Path.Join(_msvcToolRoot, "lib", targetArch);
     }
 
-    private static string GetShorterPath(string path)
+    private static string GetShorterPath(string path, ModuleBase module)
     {
-        var fp = Path.GetFullPath(path);
+        var fp = Path.GetFullPath(module.Context.ModuleDirectory!.FullName, path);
         //We are in binary, so we should resolve the path from the binary folder.
         var rp = Path.GetRelativePath(Path.Join(Directory.GetCurrentDirectory(), "Binaries"), path);
         return fp.Length > rp.Length ? rp : fp;
@@ -172,11 +172,25 @@ public class MsvcCompiler : CompilerBase
         return value;
     }
 
+    private void AddModuleCompileArguments(ModuleBase module, bool includeSourceFiles, ref ArgumentBuilder args,
+        AccessLimit? accessLimit = null)
+    {
+        args += module.Definitions.GetLimited(accessLimit).Select(definition => $"/D\"{definition}\"");
+
+        args += module.Includes.Joined().Select(include => $"/I\"{GetShorterPath(include, module)}\"");
+        args += module.ForceIncludes.Joined().Select(s => $"/FI{GetShorterPath(s, module)}");
+
+        if (includeSourceFiles)
+        {
+            args += module.SourceFiles.Select(s => GetShorterPath(s, module));
+        }
+    }
+
     private string GenerateCompileCommand(bool bSourceFiles)
     {
         if (CurrentModule == null) throw new NullReferenceException();
-        // ReSharper disable once StringLiteralTypo
         ArgumentBuilder args = new();
+        // ReSharper disable once StringLiteralTypo
         args += "/nologo";
         args += "/c";
         args += "/EHsc";
@@ -198,20 +212,21 @@ public class MsvcCompiler : CompilerBase
             args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
         }
 
-        //TODO: Additional Compilation Commands and Linker Commands.
         args += AdditionalCompilerOptions;
 
-        args += CurrentModule.Definitions.Joined().Select(definition => $"/D\"{definition}\"");
+        AddModuleCompileArguments(CurrentModule, bSourceFiles, ref args);
+
 
         var binaryDir = Directory.GetCurrentDirectory();
         Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
 
-        args += CurrentModule.Includes.Joined().Select(include => $"/I\"{GetShorterPath(include)}\"");
-        args += CurrentModule.ForceIncludes.Joined().Select(s => $"/FI{GetShorterPath(s)}");
 
-        if (bSourceFiles)
+        var currentModuleFile = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName);
+        var dependencyTree = currentModuleFile.GetDependencyTreeChecked();
+        foreach (var moduleChild in dependencyTree.ToEnumerable(AccessLimit.Public))
         {
-            args += CurrentModule.SourceFiles.Select(GetShorterPath);
+            // Append commands of the child module.
+            AddModuleCompileArguments(moduleChild.GetCompiledModule(), false, ref args);
         }
 
         Directory.SetCurrentDirectory(binaryDir);
@@ -494,7 +509,7 @@ public class MsvcCompiler : CompilerBase
         var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
         var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
-        files = files.Select(GetShorterPath).ToArray();
+        files = files.Select(f => GetShorterPath(f, CurrentModule)).ToArray();
         // ReSharper disable once StringLiteralTypo
         argumentBuilder += "/nologo";
         if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
@@ -503,7 +518,7 @@ public class MsvcCompiler : CompilerBase
             argumentBuilder += $"/PDB:{Path.Join((CurrentModule.Name ?? CurrentModule.GetType().Name))}.pdb";
         }
 
-        argumentBuilder += string.Join(" ", AdditionalLinkerOptions);
+        argumentBuilder += AdditionalLinkerOptions;
 
         var outType = ".exe";
         switch (CurrentModule.Type)
@@ -529,10 +544,27 @@ public class MsvcCompiler : CompilerBase
 
         argumentBuilder += CurrentModule.LibrarySearchPaths.Joined()
             .Select(current => $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
+        var depTree = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName).GetDependencyTreeChecked();
+        foreach (var dependency in depTree.ToEnumerable(AccessLimit.Public))
+        {
+            argumentBuilder +=
+                dependency.GetCompiledModule().LibrarySearchPaths.Public.Select(current =>
+                    $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
+        }
+
         argumentBuilder += files;
 
         argumentBuilder += CurrentModule.Libraries.Joined()
             .Select((a) => File.Exists(Path.GetFullPath(a)) ? Path.GetFullPath(a) : a);
+        foreach (var dependency in depTree.ToEnumerable(AccessLimit.Public))
+        {
+            argumentBuilder += dependency.GetCompiledModule().Libraries.Public
+                .Select((a) =>
+                {
+                    var shorterPath = GetShorterPath(a, dependency.GetCompiledModule());
+                    return File.Exists(shorterPath) ? shorterPath : a;
+                });
+        }
 
         var tempFile = Path.GetTempFileName();
         var argumentString = argumentBuilder.ToString();
@@ -611,8 +643,9 @@ public class MsvcCompiler : CompilerBase
         var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
         var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
         var files = Directory.GetFiles(binaryDir);
+        //TODO: add files from the dependencies.
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
-        files = files.Select(GetShorterPath).ToArray();
+        files = files.Select(f => GetShorterPath(f, CurrentModule)).ToArray();
         Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
         // ReSharper disable once StringLiteralTypo
         ArgumentBuilder argumentBuilder = new();
@@ -692,14 +725,14 @@ public class MsvcCompiler : CompilerBase
     {
         if (what == "CompileCommandsJSON")
         {
-            return await GenerateCompileCommands((string?)data);
+            return await GenerateCompileDatabase((string?)data);
         }
 
         return false;
     }
 
 
-    private async Task<bool> GenerateCompileCommands(string? outFile)
+    private async Task<bool> GenerateCompileDatabase(string? outFile)
     {
         var command = GenerateCompileCommand(false);
         command = command.Replace(@"\\", @"\");

@@ -5,15 +5,22 @@ public class AccessLimitList<T>
     public readonly List<T> Public = new();
     public readonly List<T> Private = new();
 
-    public List<T> GetLimited(AccessLimit limit)
+    public List<T> GetLimited(AccessLimit? limit)
     {
-        switch (limit)
+        if (limit != null)
         {
-            default:
-            case AccessLimit.Private:
-                return Private;
-            case AccessLimit.Public:
-                return Public;
+            switch (limit)
+            {
+                default:
+                case AccessLimit.Private:
+                    return Private;
+                case AccessLimit.Public:
+                    return Public;
+            }
+        }
+        else
+        {
+            return Joined();
         }
     }
 
@@ -42,5 +49,10 @@ public class AccessLimitList<T>
         List<T> all = new(Public);
         all.AddRange(Private);
         return all;
+    }
+
+    public void AddRange(AccessLimit limit, IEnumerable<T> enumerable)
+    {
+        GetLimited(limit).AddRange(enumerable);
     }
 }

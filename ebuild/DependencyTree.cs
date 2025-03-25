@@ -7,11 +7,12 @@ public class DependencyTree
 {
     private Entry? _root;
 
-    private class Entry(Entry? parent, ModuleFile module)
+    private class Entry(Entry? parent, ModuleFile module, AccessLimit? limit)
     {
         public Entry? Parent = parent;
         public readonly ModuleFile Module = module;
         public readonly List<Entry> Children = new();
+        public AccessLimit? Limit = limit;
 
         public int GetDepth()
         {
@@ -83,6 +84,22 @@ public class DependencyTree
         {
             return Module.GetHashCode();
         }
+
+        public IEnumerable<Tuple<ModuleFile, AccessLimit>> GetChildModules(AccessLimit? accessLimit)
+        {
+            return GetChildModules(this, accessLimit);
+        }
+
+        private static IEnumerable<Tuple<ModuleFile, AccessLimit>> GetChildModules(Entry e, AccessLimit? accessLimit)
+        {
+            foreach (var subChild in e.Children.SelectMany(c => c.GetChildModules(accessLimit)))
+            {
+                yield return subChild;
+            }
+
+            if (accessLimit == e.Limit || accessLimit == null)
+                yield return new Tuple<ModuleFile, AccessLimit>(e.Module, e.Limit!.Value);
+        }
     }
 
     public bool IsEmpty()
@@ -93,18 +110,18 @@ public class DependencyTree
     public async Task CreateFromModuleFile(ModuleFile module, string configuration, PlatformBase platform,
         string compilerName)
     {
-        _root = new Entry(null, module);
+        _root = new Entry(null, module, null);
         await CreateFromModuleFile(_root, configuration, platform, compilerName);
     }
 
     private static async Task CreateFromModuleFile(Entry entry, string configuration, PlatformBase platform,
         string compilerName)
     {
-        foreach (var dependency in await entry.Module.GetAllDependencies(configuration, platform, compilerName))
+        foreach (var dependency in await entry.Module.GetDependencies(configuration, platform, compilerName))
         {
-            var child = new Entry(entry, dependency);
+            var child = new Entry(entry, dependency.Item1, dependency.Item2);
             //TODO: Remove this log.
-            Console.WriteLine($"Adding dependency {dependency.Name} to {entry.Module.Name}");
+            Console.WriteLine($"Adding dependency {dependency.Item1.Name} to {entry.Module.Name}");
             entry.Append(child);
             if (child.IsCircular())
             {
@@ -144,5 +161,16 @@ public class DependencyTree
         }
 
         return _root.ToString();
+    }
+
+    public IEnumerable<ModuleFile> ToEnumerable(AccessLimit? accessLimit = null)
+    {
+        if (_root != null)
+            foreach (var childModule in _root.GetChildModules(accessLimit))
+            {
+                yield return childModule.Item1;
+            }
+
+        yield break;
     }
 }
