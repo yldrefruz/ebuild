@@ -22,7 +22,7 @@ EBuild is a powerful build system designed to handle complex module-based projec
 Clone the repository and build the solution using the .NET CLI or your preferred IDE:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/yldrefruz/ebuild.git
 cd ebuild
 ```
 
@@ -38,18 +38,28 @@ EBuild provides a command-line interface for managing builds. The main entry poi
 
 #### Commands
 
+- **Help**
+The project is still in development process. For more updated usages of commands use
+  ```bash
+  ebuild --help
+  ```
+
 - **Build**: Compile and link the specified module.
   ```bash
-  ebuild build --module <module-file> [options]
+  ebuild build <module-file> [options]
   ```
   Options:
   - `--noCompile`: Disable compilation.
   - `--clean`: Clean compilation.
-  - `--process-count`: Specify the number of processes for parallel builds.
+  - `--process-count <number>`: Specify the number of processes for parallel builds.
+  - `--configuration <configuration>`: Configuration to use for compiling. Default is loaded from config.
+  - `--compiler <compiler name>`: Specify the compiler to use. Default will load from the config. If config doesn't have section, will default to platform's default.
+  - `--additional-compiler-option <option1> <option2> ...`: Add option to pass into compiler executable.
+  - `--additional-linker-option <option1> <option2> ...`: Add option to pass into linker executable.
 
-- **Generate**: Generate metadata for the module.
+- **Generate**: Generate metadata for the module. Generating compile_commands.json can be achieved with this command
   ```bash
-  ebuild generate --module <module-file>
+  ebuild generate compile_commands.json <module file>
   ```
 
 ## Module System
@@ -105,6 +115,10 @@ public class AdvancedModule : ModuleBase
 
 ## Extending EBuild
 
+The api for extending is complete. But the ebuild itself currently does **not** load the extension assemblies for now.
+
+After thinking about the way to load the assemblies in to the program, the extension system will be completed.
+
 ### Adding a New Compiler
 
 To add a new compiler, create a class that inherits from `CompilerBase` and implement the required methods:
@@ -117,7 +131,7 @@ public class MyCompiler : CompilerBase
 {
     public override Task<bool> Setup() { /* Setup logic */ }
     public override Task<bool> Compile() { /* Compilation logic */ }
-    public override string GetExecutablePath() { /* Path to compiler executable */ }
+    public override string GetExecutablePath() { /* Path to compiler executable; better if programatically created*/ }
 }
 ```
 
@@ -135,14 +149,10 @@ public class MyPlatform : PlatformBase
 }
 ```
 
-## Logging
-
-EBuild uses the `Microsoft.Extensions.Logging` library for logging. You can customize the logging behavior by modifying the `LoggerFactory` in `EBuild.cs`.
-
 ## Contributing
 
 Contributions are welcome! Please submit a pull request or open an issue to discuss your ideas.
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License. See  LICENSE file.
