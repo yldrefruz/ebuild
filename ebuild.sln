@@ -1,8 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
+# 
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild", "ebuild\ebuild.csproj", "{43026FE3-9D31-4D6A-90A7-EA9633D91618}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild.api", "ebuild.api\ebuild.api.csproj", "{DF5AE775-C7A3-4252-89FA-425407E1FD24}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild.Tests", "ebuild.Tests\ebuild.Tests.csproj", "{7692B2EE-0A86-48F5-A50C-728283575BF8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,5 +21,9 @@ Global
 		{DF5AE775-C7A3-4252-89FA-425407E1FD24}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DF5AE775-C7A3-4252-89FA-425407E1FD24}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DF5AE775-C7A3-4252-89FA-425407E1FD24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

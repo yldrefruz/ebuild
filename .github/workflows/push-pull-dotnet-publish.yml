@@ -1,4 +1,4 @@
-name: Package and Release
+name: Package and Test .NET Project
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
   pull_request:
     branches:
       - main
-
+  workflow_dispatch:
+  
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -27,6 +28,9 @@ jobs:
     - name: Build solution
       run: dotnet build ebuild.sln --configuration Release --no-restore
 
+    - name: Run tests
+      run: dotnet test ebuild.sln --configuration Release --no-build
+
     - name: Publish artifacts
       run: dotnet publish ebuild/ebuild.csproj --configuration Release --output ./publish
 
@@ -35,6 +39,7 @@ jobs:
       with:
         name: ebuild-windows
         path: ./publish
+
   build-linux:
     runs-on: ubuntu-latest
 
@@ -52,6 +57,9 @@ jobs:
 
     - name: Build solution
       run: dotnet build ebuild.sln --configuration Release --no-restore
+
+    - name: Run tests
+      run: dotnet test ebuild.sln --configuration Release --no-build
 
     - name: Publish artifacts
       run: dotnet publish ebuild/ebuild.csproj --configuration Release --output ./publish
