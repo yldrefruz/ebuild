@@ -41,6 +41,7 @@ public partial class ModuleReference
         }
     }
 
+
     public ModuleReference(string outputType, string path, string version, Dictionary<string, string> options)
     {
         _output = outputType;

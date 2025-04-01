@@ -49,12 +49,10 @@ public class ModuleInstancingParams(ModuleReference moduleFileReference)
     }
 
 
-    public static explicit operator ModuleContext(ModuleInstancingParams p) => new()
+    public static explicit operator ModuleContext(ModuleInstancingParams p) => new(reference: p.SelfModuleReference,
+        platform: p.PlatformName, compiler: p.CompilerName)
     {
         AdditionalDependencyPaths = p.AdditionalDependencyPaths ?? new List<string>(),
-        Compiler = p.CompilerName,
-        Platform = p.PlatformName,
-        SelfReference = p.SelfModuleReference,
         Configuration = p.Configuration,
         Options = p.Options ?? new Dictionary<string, string>(),
         Messages = new List<ModuleContext.Message>(),

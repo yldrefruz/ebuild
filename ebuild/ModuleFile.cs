@@ -69,6 +69,7 @@ public class ModuleFile
         }
 
         ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
+        context.SelfReference = _reference;
         var created = constructor.Invoke(new object?[] { context });
         var failed = false;
         foreach (var m in context.Messages)
@@ -132,16 +133,16 @@ public class ModuleFile
 
         if (_moduleType == null)
         {
-            throw new ModuleFileException(_path);
+            throw new ModuleFileException(_reference.GetFilePath());
         }
 
         return _moduleType!;
     }
 
-    private readonly string _path;
+    private readonly ModuleReference _reference;
     private readonly DependencyTree _dependencyTree = new();
-    public string Directory => System.IO.Directory.GetParent(_path)!.FullName;
-    public string FilePath => _path;
+    public string Directory => System.IO.Directory.GetParent(_reference.GetFilePath())!.FullName;
+    public string FilePath => _reference.GetFilePath();
 
     public async Task<DependencyTree?> GetDependencyTree(
         ModuleInstancingParams moduleInstancingParams, bool compileModule = true)
@@ -163,8 +164,9 @@ public class ModuleFile
 
     public readonly string Name;
 
-    public static ModuleFile Get(string path)
+    public static ModuleFile Get(ModuleReference moduleReference)
     {
+        var path = moduleReference.GetFilePath();
         var f = TryDirToModuleFile(path, out _);
         if (!File.Exists(f)) throw new ModuleFileException(f);
         var fi = new FileInfo(f);
@@ -213,12 +215,15 @@ public class ModuleFile
         return string.Empty;
     }
 
-    private ModuleFile(string path)
+    private ModuleFile(ModuleReference reference)
     {
-        _path = TryDirToModuleFile(Path.GetFullPath(path), out var name);
-        if (string.IsNullOrEmpty(_path))
+        _reference = new ModuleReference(reference.GetOutput(),
+            TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath()), out var name),
+            reference.GetVersion(),
+            reference.GetOptions());
+        if (string.IsNullOrEmpty(_reference.GetFilePath()))
         {
-            throw new ModuleFileException(path);
+            throw new ModuleFileException(_reference.GetFilePath());
         }
 
         Name = name;
@@ -272,7 +277,7 @@ public class ModuleFile
     {
         try
         {
-            var fi = new FileInfo(_path);
+            var fi = new FileInfo(_reference.GetFilePath());
             return fi.LastWriteTimeUtc;
         }
         catch (Exception)
@@ -329,7 +334,7 @@ public class ModuleFile
 
     private bool IsShortFileName(out string type)
     {
-        var fileName = Path.GetFileName(_path);
+        var fileName = Path.GetFileName(_reference.GetFilePath());
         if (fileName.Equals("ebuild.cs", StringComparison.InvariantCultureIgnoreCase))
         {
             type = "ebuild.cs";
@@ -410,7 +415,7 @@ public class ModuleFile
         var logger = LoggerFactory
             .Create(builder => builder.AddConsole().AddSimpleConsole(options => options.SingleLine = true))
             .CreateLogger("Module File Compiler");
-        logger.LogDebug("Compiling file, {path}", _path);
+        logger.LogDebug("Compiling file, {path}", _reference.GetFilePath());
         var ebuildApiDll = EBuild.FindEBuildApiDllPath();
         logger.LogDebug("Found ebuild api dll: {path}", ebuildApiDll);
         var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
@@ -439,7 +444,7 @@ public class ModuleFile
                                                     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0"/>
                                                 </ItemGroup>
                                                 <ItemGroup>
-                                                    <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _path)}"/>
+                                                    <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _reference.GetFilePath())}"/>
                                                     {GetModuleMeta()?.AdditionalCompilationFiles?.Aggregate((current, f) => current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(Directory, f))}\"/>\n") ?? string.Empty}
                                                 </ItemGroup>
                                                 <ItemGroup>
@@ -511,7 +516,7 @@ public class ModuleFile
         await p.WaitForExitAsync();
         if (p.ExitCode != 0)
         {
-            throw new ModuleFileCompileException(_path);
+            throw new ModuleFileCompileException(_reference.GetFilePath());
         }
 
 
@@ -537,7 +542,7 @@ public class ModuleFile
 
     public override int GetHashCode()
     {
-        return _path.GetHashCode();
+        return _reference.GetFilePath().GetHashCode();
     }
 
     private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();

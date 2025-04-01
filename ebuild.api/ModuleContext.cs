@@ -6,9 +6,26 @@ namespace ebuild.api;
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
 public class ModuleContext
 {
-    public required ModuleReference SelfReference;
-    public required string Platform;
-    public required string Compiler;
+    public ModuleContext(ModuleContext m)
+    {
+        SelfReference = m.SelfReference;
+        Platform = m.Platform;
+        Compiler = m.Compiler;
+        TargetArchitecture = m.TargetArchitecture;
+        Options = m.Options;
+        AdditionalDependencyPaths = m.AdditionalDependencyPaths;
+    }
+
+    public ModuleContext(ModuleReference reference, string platform, string compiler)
+    {
+        SelfReference = reference;
+        Platform = platform;
+        Compiler = compiler;
+    }
+
+    public ModuleReference SelfReference;
+    public string Platform;
+    public string Compiler;
     public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
     public Dictionary<string, string> Options = new();
     public List<string> AdditionalDependencyPaths = new();

@@ -25,14 +25,14 @@ public class NullCompiler : CompilerBase
         }
 
         var module = new EmptyModule(new ModuleContext
-        {
-            SelfReference = new ModuleReference(outputType: "null",
+        (
+            reference: new ModuleReference(outputType: "null",
                 path: nullFile,
                 version: "0",
                 options: new Dictionary<string, string>()),
-            Platform = PlatformRegistry.GetHostPlatform().GetName(),
-            Compiler = CompilerRegistry.GetDefaultCompilerName(),
-        });
+            platform: PlatformRegistry.GetHostPlatform().GetName(),
+            compiler: CompilerRegistry.GetDefaultCompilerName()
+        ));
         _compiler = new NullCompiler();
         _compiler.SetModule(module);
         return _compiler;
