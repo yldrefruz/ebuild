@@ -1,5 +1,4 @@
-﻿using System.CommandLine.Invocation;
-using System.Reflection;
+﻿using System.Reflection;
 using ebuild.api;
 using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
@@ -8,38 +7,27 @@ namespace ebuild.Compilers;
 
 public class CompilerRegistry
 {
-    public class ConstructorNotFoundException : Exception
+    private class ConstructorNotFoundException : Exception
     {
-        public readonly string Name;
-        public readonly Type CompilerType;
-
         public ConstructorNotFoundException(Type compilerType, string name) : base(
             $"Compiler {name}'s constructor `{compilerType.Name}()` not found.")
         {
-            Name = name;
-            CompilerType = compilerType;
         }
     }
 
-    public class CompilerNotFoundException : Exception
+    private class CompilerNotFoundException : Exception
     {
-        public readonly string Name;
-
         public CompilerNotFoundException(string name) : base(
             $"Compiler {name} is not found.")
         {
-            Name = name;
         }
     }
 
 
-    public class CompilerAttributeNotFoundException : Exception
+    private class CompilerAttributeNotFoundException : Exception
     {
-        public readonly Type ForType;
-
         public CompilerAttributeNotFoundException(Type forType) : base($"{forType} doesn't have Compiler attribute")
         {
-            ForType = forType;
         }
     }
 
@@ -47,51 +35,22 @@ public class CompilerRegistry
 
     public static CompilerRegistry GetInstance() => Instance;
 
-    public class CompilerInstancingParams(string moduleFile)
-    {
-        public readonly string ModuleFile = moduleFile;
-        public string Configuration = Config.Get().DefaultBuildConfiguration;
-        public string CompilerName = PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ?? "Null";
-        public ILogger? Logger;
-        public List<string>? AdditionalCompilerOptions;
-        public List<string>? AdditionalLinkerOptions;
-
-        /// <summary>
-        /// Create a CompilerInstancingParams from the command line arguments and options.
-        /// The logger will be null if created this way
-        /// </summary>
-        /// <param name="context">the context to use for creation</param>
-        /// <returns></returns>
-        public static CompilerInstancingParams FromOptionsAndArguments(InvocationContext context)
-        {
-            return new CompilerInstancingParams(
-                context.ParseResult.GetValueForArgument(CompilerCreationUtilities.ModuleArgument))
-            {
-                Configuration = context.ParseResult.GetValueForOption(CompilerCreationUtilities.ConfigurationOption) ??
-                                "Null",
-                Logger = null,
-                CompilerName = context.ParseResult.GetValueForOption(CompilerCreationUtilities.CompilerName) ??
-                               GetDefaultCompilerName(),
-                AdditionalCompilerOptions =
-                    context.ParseResult.GetValueForOption(CompilerCreationUtilities.AdditionalCompilerOptions),
-                AdditionalLinkerOptions =
-                    context.ParseResult.GetValueForOption(CompilerCreationUtilities.AdditionalLinkerOptions)
-            };
-        }
-    }
 
     public static string GetDefaultCompilerName() => Config.Get().PreferredCompilerName ??
                                                      PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ??
                                                      "Null";
 
-    public static async Task<CompilerBase?> CreateInstanceFor(CompilerInstancingParams instancingParams)
+    public static async Task<CompilerBase?> CreateInstanceFor(ModuleInstancingParams instancingParams)
     {
-        var moduleContext = new ModuleContext(new FileInfo(instancingParams.ModuleFile),
-            instancingParams.Configuration,
-            PlatformRegistry.GetHostPlatform(),
-            instancingParams.CompilerName,
-            null);
-        var moduleFile = ModuleFile.Get(instancingParams.ModuleFile);
+        var opts = new Dictionary<string, string>(instancingParams.Options ?? new Dictionary<string, string>());
+        foreach (var a in instancingParams.SelfModuleReference.GetOptions())
+        {
+            opts.Add(a.Key, a.Value);
+        }
+
+        var moduleContext = (ModuleContext)instancingParams;
+        moduleContext.Options = opts;
+        var moduleFile = (ModuleFile)instancingParams.SelfModuleReference;
         var createdModule = await moduleFile.CreateModuleInstance(moduleContext);
         if (createdModule == null)
         {
@@ -101,10 +60,10 @@ public class CompilerRegistry
 
         var compiler = await GetInstance().Create(instancingParams.CompilerName);
         instancingParams.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
-            createdModule?.Name ?? createdModule?.GetType().Name, compiler.GetName(),
+            createdModule.Name ?? createdModule.GetType().Name, compiler.GetName(),
             compiler.GetExecutablePath());
-        compiler.SetModule(createdModule!);
-        var targetWorkingDir = Path.Join(moduleFile.Directory, "Binaries");
+        compiler.SetModule(createdModule);
+        var targetWorkingDir = Path.GetFullPath(createdModule.OutputDirectory, moduleFile.Directory);
         Directory.CreateDirectory(targetWorkingDir);
         Directory.SetCurrentDirectory(targetWorkingDir);
         if (instancingParams.AdditionalCompilerOptions != null)
@@ -114,7 +73,7 @@ public class CompilerRegistry
         return compiler;
     }
 
-    public async Task<CompilerBase> Create(string name)
+    private async Task<CompilerBase> Create(string name)
     {
         if (!_compilerTypeList.TryGetValue(name, out var compilerType))
         {
@@ -135,7 +94,7 @@ public class CompilerRegistry
         return created;
     }
 
-    public Task<CompilerBase> Create(Type type)
+    private Task<CompilerBase> Create(Type type)
     {
         return Create(GetNameOfCompiler(type));
     }
@@ -146,7 +105,7 @@ public class CompilerRegistry
     }
 
 
-    public string GetNameOfCompiler(Type compilerType)
+    private string GetNameOfCompiler(Type compilerType)
     {
         if (compilerType.IsSubclassOf(typeof(CompilerBase)))
         {
@@ -167,12 +126,7 @@ public class CompilerRegistry
     }
 
 
-    public void Register<T>() where T : CompilerBase
-    {
-        Register(typeof(T));
-    }
-
-    public void Register(Type compilerType)
+    private void Register(Type compilerType)
     {
         if (!compilerType.IsSubclassOf(typeof(CompilerBase)))
         {

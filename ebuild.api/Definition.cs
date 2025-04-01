@@ -15,4 +15,6 @@ public class Definition(string inValue)
         if (HasValue()) s += $"={GetValue()}";
         return s;
     }
+
+    public static implicit operator Definition(string s) => new(s);
 }

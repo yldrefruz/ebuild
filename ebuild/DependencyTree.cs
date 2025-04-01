@@ -1,5 +1,6 @@
 using System.Text;
 using ebuild.api;
+using ebuild.Compilers;
 
 namespace ebuild;
 
@@ -13,19 +14,6 @@ public class DependencyTree
         public readonly ModuleFile Module = module;
         public readonly List<Entry> Children = new();
         public AccessLimit? Limit = limit;
-
-        public int GetDepth()
-        {
-            int i = 0;
-            Entry? localParent = this;
-            while (localParent != null)
-            {
-                localParent = Parent;
-                ++i;
-            }
-
-            return i;
-        }
 
         public bool IsCircular()
         {
@@ -107,29 +95,27 @@ public class DependencyTree
         return _root == null;
     }
 
-    public async Task CreateFromModuleFile(ModuleFile module, string configuration, PlatformBase platform,
-        string compilerName)
+    public async Task CreateFromModuleFile(ModuleFile module,
+        ModuleInstancingParams moduleInstancingParams)
     {
         _root = new Entry(null, module, null);
-        await CreateFromModuleFile(_root, configuration, platform, compilerName);
+        await CreateFromModuleFile(_root, moduleInstancingParams);
     }
 
-    private static async Task CreateFromModuleFile(Entry entry, string configuration, PlatformBase platform,
-        string compilerName)
+    private static async Task CreateFromModuleFile(Entry entry,
+        ModuleInstancingParams moduleInstancingParams)
     {
-        foreach (var dependency in await entry.Module.GetDependencies(configuration, platform, compilerName))
+        foreach (var child in from dependency in await entry.Module.GetDependencies(
+                     moduleInstancingParams)
+                 select new Entry(entry, dependency.Item1, dependency.Item2))
         {
-            var child = new Entry(entry, dependency.Item1, dependency.Item2);
-            //TODO: Remove this log.
-            Console.WriteLine($"Adding dependency {dependency.Item1.Name} to {entry.Module.Name}");
             entry.Append(child);
             if (child.IsCircular())
             {
-                Console.WriteLine($"Circular dependency detected: {child.Module.Name}");
                 continue;
             }
 
-            await CreateFromModuleFile(child, configuration, platform, compilerName);
+            await CreateFromModuleFile(child, moduleInstancingParams);
         }
     }
 
@@ -155,22 +141,15 @@ public class DependencyTree
 
     public override string ToString()
     {
-        if (_root == null)
-        {
-            return string.Empty;
-        }
-
-        return _root.ToString();
+        return _root == null ? string.Empty : _root.ToString();
     }
 
     public IEnumerable<ModuleFile> ToEnumerable(AccessLimit? accessLimit = null)
     {
-        if (_root != null)
-            foreach (var childModule in _root.GetChildModules(accessLimit))
-            {
-                yield return childModule.Item1;
-            }
-
-        yield break;
+        if (_root == null) yield break;
+        foreach (var childModule in _root.GetChildModules(accessLimit))
+        {
+            yield return childModule.Item1;
+        }
     }
 }

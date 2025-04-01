@@ -118,19 +118,18 @@ public class MsvcCompiler : CompilerBase
 
     private static string GetShorterPath(string path, ModuleBase module)
     {
-        var fp = Path.GetFullPath(module.Context.ModuleDirectory!.FullName, path);
+        var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
         //We are in binary, so we should resolve the path from the binary folder.
         var rp = Path.GetRelativePath(Path.Join(Directory.GetCurrentDirectory(), "Binaries"), path);
         return fp.Length > rp.Length ? rp : fp;
     }
-
-    // ReSharper disable once UnusedParameter.Local
+    
     private void MutateTarget()
     {
         if (CurrentModule == null)
             return;
 
-        CurrentModule.Includes.Public.AddRange(new[]
+        CurrentModule.Includes.Private.AddRange(new[]
         {
             Path.Join(_msvcToolRoot, "include"),
             //TODO: programatically find this.
@@ -140,7 +139,7 @@ public class MsvcCompiler : CompilerBase
             @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt"
         });
 
-        CurrentModule.LibrarySearchPaths.Public.AddRange(new[]
+        CurrentModule.LibrarySearchPaths.Private.AddRange(new[]
         {
             @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64",
             @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64",
@@ -195,7 +194,7 @@ public class MsvcCompiler : CompilerBase
         args += "/c";
         args += "/EHsc";
         args += CppStandardToArg(CurrentModule.CppStandard);
-        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
+        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
             args += "/MDd";
             args += "/Zi";
@@ -512,7 +511,7 @@ public class MsvcCompiler : CompilerBase
         files = files.Select(f => GetShorterPath(f, CurrentModule)).ToArray();
         // ReSharper disable once StringLiteralTypo
         argumentBuilder += "/nologo";
-        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
+        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
             argumentBuilder += "/DEBUG";
             argumentBuilder += $"/PDB:{Path.Join((CurrentModule.Name ?? CurrentModule.GetType().Name))}.pdb";
@@ -655,7 +654,7 @@ public class MsvcCompiler : CompilerBase
             argumentBuilder += "/DLL";
         }
 
-        if (CurrentModule.Context.BuildConfiguration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
+        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
             argumentBuilder += "/DEBUG";
             argumentBuilder += $"/PDB:\"{Path.Join(CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";

@@ -19,16 +19,14 @@ public abstract class ModuleBase
 
     /// <summary> Forced include directories to use. </summary>
     public AccessLimitList<string> ForceIncludes = new();
-
-    // TODO: ability to add CMake targets as modules
+    
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
     public AccessLimitList<ModuleReference> Dependencies = new();
 
+    public List<string> DependencySearchPaths = new();
+
     /// <summary>Dependencies to add for this module. These are copied to the build directory.</summary>
     public AccessLimitList<AdditionalDependency> AdditionalDependencies = new();
-
-    /// <summary>Additional compiler options to add.</summary>
-    public AccessLimitList<string> Options = new();
 
     /// <summary>The libraries to link.</summary>
     public AccessLimitList<string> Libraries = new();
@@ -40,6 +38,8 @@ public abstract class ModuleBase
 
     /// <summary>The name of the module. If null will automatically deduce the name from the file name.</summary> 
     public string? Name;
+
+    public string OutputDirectory = "Binaries";
 
     /// <summary>The cpp standard this module uses.</summary>
     public CppStandards CppStandard = CppStandards.Cpp20;
@@ -53,6 +53,11 @@ public abstract class ModuleBase
     {
         Context = context;
         SetOptions(context.Options);
+    }
+
+    public void PostConstruction()
+    {
+        Dependencies.Joined().ForEach(r => r.ResolveModulePath(this));
     }
 
     /*
@@ -116,11 +121,17 @@ public abstract class ModuleBase
             if (attr == null)
                 continue;
             var name = attr.GetName(field);
-            if (!options.TryGetValue(name, out var value)) continue;
+            if (!options.TryGetValue(name, out var value) && attr.Required)
+            {
+                Context.AddMessage(ModuleContext.Message.SeverityTypes.Error,
+                    $"Option {name}: Option is required but isn't supplied");
+                continue;
+            }
+
             try
             {
                 var converter = TypeDescriptor.GetConverter(field.FieldType);
-                field.SetValue(this, converter.ConvertFromString(value));
+                field.SetValue(this, converter.ConvertFromString(value!));
             }
             catch (Exception exception)
             {

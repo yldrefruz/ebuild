@@ -1,6 +1,5 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
-using ebuild.api;
 using ebuild.Compilers;
 
 namespace ebuild.Commands;
@@ -26,7 +25,7 @@ public class GenerateCommand
         private async Task<int> Execute(InvocationContext context)
         {
             var cp = await CompilerRegistry.CreateInstanceFor(
-                CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context));
+                ModuleInstancingParams.FromOptionsAndArguments(context));
             if (cp == null) return 2;
             return await cp.Generate("CompileCommandsJSON", context.ParseResult.GetValueForOption(_file)) ? 0 : 1;
         }

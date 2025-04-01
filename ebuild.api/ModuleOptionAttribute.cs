@@ -14,6 +14,7 @@ public class ModuleOptionAttribute : Attribute
     public string? Name;
     public string? Description;
     public bool ChangesResultBinary = true;
+    public bool Required;
     public Func<object?>? Default;
     private string? _cachedName;
 

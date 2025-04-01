@@ -15,11 +15,11 @@ public class BuildCommand
     private readonly Option<bool> _clean = new("--clean", () => false, "clean compilation");
 
     private readonly Option<int> _processCount =
-        new(new[] { "--process-count", "-p" }, description: "the multi process count");
+        new(new[] { "--process-count", "-pc" }, description: "the multi process count");
 
     private async Task Execute(InvocationContext context)
     {
-        var compilerInstancingParams = CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context);
+        var compilerInstancingParams = ModuleInstancingParams.FromOptionsAndArguments(context);
         compilerInstancingParams.Logger = _buildLogger;
         var compiler = await CompilerRegistry.CreateInstanceFor(compilerInstancingParams);
         if (compiler == null)

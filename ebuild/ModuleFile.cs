@@ -94,6 +94,7 @@ public class ModuleFile
         }
 
         _compiledModule = (ModuleBase)created;
+        _compiledModule.PostConstruction();
         return _compiledModule;
     }
 
@@ -142,8 +143,8 @@ public class ModuleFile
     public string Directory => System.IO.Directory.GetParent(_path)!.FullName;
     public string FilePath => _path;
 
-    public async Task<DependencyTree?> GetDependencyTree(string buildConfiguration, PlatformBase platform,
-        string compilerName, bool compileModule = true)
+    public async Task<DependencyTree?> GetDependencyTree(
+        ModuleInstancingParams moduleInstancingParams, bool compileModule = true)
     {
         if (_dependencyTree.IsEmpty() && !compileModule)
         {
@@ -152,7 +153,7 @@ public class ModuleFile
 
         if (_dependencyTree.IsEmpty())
         {
-            await _dependencyTree.CreateFromModuleFile(this, buildConfiguration, platform, compilerName);
+            await _dependencyTree.CreateFromModuleFile(this, moduleInstancingParams);
         }
 
         return _dependencyTree;
@@ -191,7 +192,7 @@ public class ModuleFile
             name = new DirectoryInfo(path).Name;
             return
                 Path.Join(path,
-                    "index.ebuild.cs"); // index.ebuild.cs is the default file name or the most preffered one. for packages from internet.
+                    "index.ebuild.cs"); // index.ebuild.cs is the default file name or the most preferred one. for packages from internet.
         }
 
         if (File.Exists(Path.Join(path, new DirectoryInfo(path).Name + ".ebuild.cs")))
@@ -199,13 +200,13 @@ public class ModuleFile
             name = new DirectoryInfo(path).Name;
             return Path.Join(path,
                 new DirectoryInfo(path).Name +
-                ".ebuild.cs"); // package <name>.ebuild.cs is the second most preffered one.
+                ".ebuild.cs"); // package <name>.ebuild.cs is the second most preferred one.
         }
 
         if (File.Exists(Path.Join(path, "ebuild.cs")))
         {
             name = new DirectoryInfo(path).Name;
-            return Path.Join(path, "ebuild.cs"); // ebuild.cs is the third most preffered one.
+            return Path.Join(path, "ebuild.cs"); // ebuild.cs is the third most preferred one.
         }
 
         name = string.Empty;
@@ -229,11 +230,11 @@ public class ModuleFile
         }
     }
 
-    public async Task<List<Tuple<ModuleFile, AccessLimit>>> GetDependencies(string configuration, PlatformBase platform,
-        string compiler, AccessLimit? accessLimit = null)
+    public async Task<List<Tuple<ModuleFile, AccessLimit>>> GetDependencies(
+        ModuleInstancingParams instancingParams, AccessLimit? accessLimit = null)
     {
         List<Tuple<ModuleFile, AccessLimit>> l = new();
-        ModuleContext selfContext = new(new FileInfo(_path), configuration, platform, compiler, null);
+        var selfContext = (ModuleContext)instancingParams;
         var module = await CreateModuleInstance(selfContext);
         if (module == null)
             return l;
@@ -241,7 +242,7 @@ public class ModuleFile
         {
             l.AddRange(module.Dependencies.GetLimited(AccessLimit.Public)
                 .Select(dependency =>
-                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetPureFile(), Directory)),
+                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetFilePath(), Directory)),
                         AccessLimit.Public)));
         }
 
@@ -249,25 +250,20 @@ public class ModuleFile
         {
             l.AddRange(module.Dependencies.GetLimited(AccessLimit.Private)
                 .Select(dependency =>
-                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetPureFile(), Directory)),
+                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetFilePath(), Directory)),
                         AccessLimit.Private)));
         }
 
         return l;
     }
 
-    public async Task<bool> HasCircularDependency(string configuration, PlatformBase platform, string compiler)
+    public async Task<bool> HasCircularDependency(ModuleInstancingParams instancingParams)
     {
-        DependencyTree? tree = await GetDependencyTree(configuration, platform, compiler);
-        if (tree == null)
-        {
-            return false;
-        }
-
-        return tree.HasCircularDependency();
+        var tree = await GetDependencyTree(instancingParams);
+        return tree != null && tree.HasCircularDependency();
     }
 
-    public bool HasChanged()
+    private bool HasChanged()
     {
         return GetLastEditTime() == null || GetCachedEditTime() == null || GetLastEditTime() != GetCachedEditTime();
     }
@@ -368,6 +364,34 @@ public class ModuleFile
         return null;
     }
 
+    private async Task CreateOrUpdateSolution()
+    {
+        var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(Directory, ".ebuild"));
+        var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
+        var moduleProjectFileLocation =
+            Path.Join(moduleProjectFileDir, Name + ".ebuild_module.csproj");
+        var psi = new ProcessStartInfo
+        {
+            WorkingDirectory = moduleProjectFileDir,
+            Arguments = $"new sln --name {Name}",
+            CreateNoWindow = true,
+            FileName = "dotnet",
+            UseShellExecute = false
+        };
+
+        var p = new Process
+        {
+            StartInfo = psi
+        };
+        p.Start();
+        await p.WaitForExitAsync();
+
+        psi.Arguments = $"sln add {moduleProjectFileLocation}";
+        p = new Process { StartInfo = psi };
+        p.Start();
+        await p.WaitForExitAsync();
+    }
+
     /// <summary>
     /// Compile the module file and load the assembly.
     /// There are massive security concerns about this as the loaded assembly can do whatever it wants.
@@ -428,6 +452,8 @@ public class ModuleFile
                 await writer.WriteAsync(moduleProjectContent);
             }
         }
+
+        await CreateOrUpdateSolution();
 
         var psi = new ProcessStartInfo
         {
@@ -515,4 +541,7 @@ public class ModuleFile
     }
 
     private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();
+
+    public static explicit operator ModuleFile(ModuleBase b) => Get(b.Context.ModuleFile.FullName);
+    public static explicit operator ModuleFile(ModuleReference r) => Get(r.GetFilePath());
 }

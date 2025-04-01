@@ -1,17 +1,26 @@
-﻿// ReSharper disable MemberCanBePrivate.Global
-// ReSharper disable UnusedMember.Global
-// ReSharper disable NotAccessedField.Global
-// ReSharper disable CollectionNeverQueried.Global
-// ReSharper disable FieldCanBeMadeReadOnly.Global
-// ReSharper disable ClassNeverInstantiated.Global
-
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace ebuild.api;
 
-public class ModuleContext(FileInfo moduleFile, string buildConfiguration, PlatformBase platform, string compilerName,
-    FileInfo? outputBinary, Architecture? targetArchitecture = null)
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+public class ModuleContext
 {
+    public required ModuleReference SelfReference;
+    public required string Platform;
+    public required string Compiler;
+    public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
+    public Dictionary<string, string> Options = new();
+    public List<string> AdditionalDependencyPaths = new();
+
+
+    public FileInfo ModuleFile => new(SelfReference.GetFilePath());
+    public DirectoryInfo? ModuleDirectory => ModuleFile.Directory;
+    public string Configuration = "debug";
+    public string RequestedVersion => SelfReference.GetVersion();
+    public string RequestedOutput => SelfReference.GetOutput();
+
+
     public class Message(string value, Message.SeverityTypes type)
     {
         public enum SeverityTypes
@@ -29,18 +38,6 @@ public class ModuleContext(FileInfo moduleFile, string buildConfiguration, Platf
             return type + " : " + value;
         }
     }
-
-    public DirectoryInfo? ModuleDirectory => ModuleFile.Directory;
-
-    public FileInfo ModuleFile { get; } = moduleFile;
-    public FileInfo? OutputBinary = outputBinary;
-    public string BuildConfiguration = buildConfiguration;
-
-    public PlatformBase Platform = platform;
-    public string CompilerName = compilerName;
-    public List<ModuleBase> DependantModules = new();
-    public Architecture TargetArchitecture = targetArchitecture ?? RuntimeInformation.OSArchitecture;
-    public Dictionary<string, string> Options = new();
 
     public List<Message> Messages = new();
 

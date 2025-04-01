@@ -1,8 +1,5 @@
 ﻿using System.CommandLine;
-using System.Threading.Tasks;
-using ebuild.api;
 using ebuild.Compilers;
-using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Commands;
@@ -11,15 +8,15 @@ public class CheckCommand
 {
     private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("Check");
 
-    public enum CheckTypes
+    private enum CheckTypes
     {
         CircularDependency,
         PrintDependencies
     }
 
-    private Command _command = new("check", "check the module health and relevant info");
+    private readonly Command _command = new("check", "check the module health and relevant info");
 
-    private Argument<CheckTypes> _type = new("type", "the type of the check");
+    private readonly Argument<CheckTypes> _type = new("type", "the type of the check");
 
 
     public CheckCommand()
@@ -34,26 +31,28 @@ public class CheckCommand
             {
                 default:
                 case CheckTypes.CircularDependency:
-                    await CheckCircularDependency(CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context));
+                    await CheckCircularDependency(
+                        ModuleInstancingParams.FromOptionsAndArguments(context));
                     break;
                 case CheckTypes.PrintDependencies:
-                    var compilerInstancingParams = CompilerRegistry.CompilerInstancingParams.FromOptionsAndArguments(context);
+                    var compilerInstancingParams =
+                        ModuleInstancingParams.FromOptionsAndArguments(context);
                     await PrintDependencies(compilerInstancingParams);
                     break;
             }
         });
     }
 
-    private async Task CheckCircularDependency(CompilerRegistry.CompilerInstancingParams compilerInstancingParams)
+    private async Task CheckCircularDependency(ModuleInstancingParams moduleInstancingParams)
     {
-        ModuleFile file = ModuleFile.Get(compilerInstancingParams.ModuleFile);
-        DependencyTree? tree = await file.GetDependencyTree(compilerInstancingParams.Configuration, PlatformRegistry.GetHostPlatform(),
-            compilerInstancingParams.CompilerName);
+        var file = (ModuleFile)moduleInstancingParams.SelfModuleReference;
+        var tree = await file.GetDependencyTree(moduleInstancingParams);
         if (tree == null)
         {
             Logger.LogError("Failed to get dependency tree for {file}", file.FilePath);
             return;
         }
+
         if (tree.HasCircularDependency())
         {
             Logger.LogError("Circular dependency detected in {file}", file.FilePath);
@@ -66,16 +65,16 @@ public class CheckCommand
     }
 
 
-    private async Task PrintDependencies(CompilerRegistry.CompilerInstancingParams compilerInstancingParams)
+    private async Task PrintDependencies(ModuleInstancingParams moduleInstancingParams)
     {
-        var moduleFile = ModuleFile.Get(compilerInstancingParams.ModuleFile);
-        var depTree = await moduleFile.GetDependencyTree(compilerInstancingParams.Configuration, PlatformRegistry.GetHostPlatform(),
-            compilerInstancingParams.CompilerName);
+        var moduleFile = (ModuleFile)moduleInstancingParams.SelfModuleReference;
+        var depTree = await moduleFile.GetDependencyTree(moduleInstancingParams);
         if (depTree == null)
         {
             Logger.LogError("Failed to get dependency tree for {file}", moduleFile.FilePath);
             return;
         }
+
         Logger.LogInformation("Dependencies for {file}", moduleFile.FilePath);
         Logger.LogInformation("\n{dependencies}", depTree.ToString());
     }
