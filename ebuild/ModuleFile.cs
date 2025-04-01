@@ -176,7 +176,7 @@ public class ModuleFile
             return value;
         }
 
-        var mf = new ModuleFile(path);
+        var mf = new ModuleFile(moduleReference);
         ModuleFileRegistry.Add(fi.FullName, mf);
         return mf;
     }
@@ -217,10 +217,10 @@ public class ModuleFile
 
     private ModuleFile(ModuleReference reference)
     {
-        _reference = new ModuleReference(reference.GetOutput(),
-            TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath()), out var name),
-            reference.GetVersion(),
-            reference.GetOptions());
+        _reference = new ModuleReference(outputType: reference.GetOutput(),
+            path: TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath()), out var name),
+            version: reference.GetVersion(),
+            options: reference.GetOptions());
         if (string.IsNullOrEmpty(_reference.GetFilePath()))
         {
             throw new ModuleFileException(_reference.GetFilePath());
@@ -547,6 +547,6 @@ public class ModuleFile
 
     private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();
 
-    public static explicit operator ModuleFile(ModuleBase b) => Get(b.Context.ModuleFile.FullName);
-    public static explicit operator ModuleFile(ModuleReference r) => Get(r.GetFilePath());
+    public static explicit operator ModuleFile(ModuleBase b) => Get(b.Context.SelfReference);
+    public static explicit operator ModuleFile(ModuleReference r) => Get(r);
 }

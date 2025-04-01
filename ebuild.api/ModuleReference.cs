@@ -154,6 +154,6 @@ public partial class ModuleReference
     }
 
     [GeneratedRegex(
-        @"^(?:(?<output>\w+):)?(?<path>(?:[^/\\]*[/\\])*(?:[^@?!]*))(?:@(?<version>\w+))?(?:\?(?<options>(?:[\w-_]+=[\w-_]+;?)*))?$")]
+            @"^(?:(?<output>\w+):)?(?<path>(?:[^/\\]*[/\\])*(?:[^@?!]*))(?:@(?<version>\w+))?(?:\?(?<options>(?:[\w-_]+=[\w-_]+;?)*))?$")]
     private static partial Regex ModuleReferenceStringRegex();
 }

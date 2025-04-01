@@ -396,7 +396,7 @@ public class MsvcCompiler : CompilerBase
                 await CallLibExe();
                 break;
             }
-            case ModuleType.DynamicLibrary:
+            case ModuleType.SharedLibrary:
             case ModuleType.Executable:
             case ModuleType.ExecutableWin32:
             {
@@ -528,7 +528,7 @@ public class MsvcCompiler : CompilerBase
             case ModuleType.Executable:
                 argumentBuilder += "/SUBSYSTEM:CONSOLE";
                 break;
-            case ModuleType.DynamicLibrary:
+            case ModuleType.SharedLibrary:
                 argumentBuilder += "/DLL";
                 outType = ".dll";
                 break;
@@ -649,7 +649,7 @@ public class MsvcCompiler : CompilerBase
         // ReSharper disable once StringLiteralTypo
         ArgumentBuilder argumentBuilder = new();
         argumentBuilder += "/nologo";
-        if (CurrentModule.Type == ModuleType.DynamicLibrary)
+        if (CurrentModule.Type == ModuleType.SharedLibrary)
         {
             argumentBuilder += "/DLL";
         }
