@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using ebuild.api;
 using Microsoft.Extensions.Logging;
 
@@ -17,6 +18,8 @@ public class MsvcCompiler : CompilerBase
 {
     private string _msvcCompilerRoot = string.Empty;
     private string _msvcToolRoot = string.Empty;
+
+    private static readonly Regex CLMessageRegex = new(@"^(?<file>.*)\((?<location>\d+(?:,\d+)?)\) ?: (?<type>error|warning|note) ?(?<code>[A-Z]+\d+|)?: (?<message>.+)$");
 
     private static readonly ILogger Logger =
         LoggerFactory
@@ -119,11 +122,18 @@ public class MsvcCompiler : CompilerBase
     private static string GetShorterPath(string path, ModuleBase module)
     {
         var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
-        //We are in binary, so we should resolve the path from the binary folder.
-        var rp = Path.GetRelativePath(Path.Join(Directory.GetCurrentDirectory(), "Binaries"), path);
-        return fp.Length > rp.Length ? rp : fp;
+        // We are in binary, so we should resolve the path from the binary folder.
+
+
+        // TODO: This implementation doesn't make sense on the other context than building.
+        // While trying to resolve include/force include paths, this gives the wrong result.
+
+
+        // var rp = Path.GetRelativePath(Path.Join(module.Context.ModuleDirectory!.FullName, "Binaries"), path);
+        // return fp.Length > rp.Length ? rp : fp;
+        return fp;
     }
-    
+
     private void MutateTarget()
     {
         if (CurrentModule == null)
@@ -363,7 +373,29 @@ public class MsvcCompiler : CompilerBase
         {
             if (args.Data != null)
             {
-                Logger.LogInformation("{data}", args.Data);
+                var match = CLMessageRegex.Match(args.Data);
+                var type = match.Groups["type"].Value;
+                var code = match.Groups["code"].Value;
+                var message = match.Groups["message"].Value;
+                var file = match.Groups["file"].Value;
+                var location = match.Groups["location"].Value;
+                if (type == "error")
+                {
+                    Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                }
+                else if (type == "warning")
+                {
+                    Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                }
+                else if (type == "note")
+                {
+                    Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
+                }
+                else
+                {
+                    Logger.LogInformation("{data}", args.Data);
+                }
+
             }
         };
         proc.ErrorDataReceived += (_, args) =>
@@ -392,17 +424,17 @@ public class MsvcCompiler : CompilerBase
         switch (CurrentModule.Type)
         {
             case ModuleType.StaticLibrary:
-            {
-                await CallLibExe();
-                break;
-            }
+                {
+                    await CallLibExe();
+                    break;
+                }
             case ModuleType.SharedLibrary:
             case ModuleType.Executable:
             case ModuleType.ExecutableWin32:
-            {
-                await CallLinkExe();
-                break;
-            }
+                {
+                    await CallLinkExe();
+                    break;
+                }
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -439,14 +471,41 @@ public class MsvcCompiler : CompilerBase
             switch (additionalDependency.Type)
             {
                 case AdditionalDependency.DependencyType.Directory:
-                {
-                    var dir = new DirectoryInfo(additionalDependency.Path);
-                    var targetDir = additionalDependency.Target ??
-                                    Path.Join(Directory.GetCurrentDirectory(), "Binaries");
-                    Directory.CreateDirectory(targetDir);
-                    var files = dir.GetFiles("*", SearchOption.AllDirectories);
-                    foreach (var file in files)
                     {
+                        var dir = new DirectoryInfo(additionalDependency.Path);
+                        var targetDir = additionalDependency.Target ??
+                                        Path.Join(Directory.GetCurrentDirectory(), "Binaries");
+                        Directory.CreateDirectory(targetDir);
+                        var files = dir.GetFiles("*", SearchOption.AllDirectories);
+                        foreach (var file in files)
+                        {
+                            var targetFile = Path.Combine(targetDir,
+                                Path.GetRelativePath(additionalDependency.Path, file.FullName));
+                            var parentDir = new FileInfo(targetFile).Directory;
+                            while (parentDir is { Exists: false })
+                            {
+                                parentDir.Create();
+                                parentDir = parentDir.Parent;
+                            }
+
+                            if (additionalDependency.Processor != null)
+                            {
+                                additionalDependency.Processor(additionalDependency.Path, targetFile);
+                            }
+                            else
+                            {
+                                File.Copy(file.FullName, targetFile, true);
+                            }
+                        }
+
+                        break;
+                    }
+                case AdditionalDependency.DependencyType.File:
+                    {
+                        var targetDir = additionalDependency.Target ??
+                                        Path.Join(Directory.GetCurrentDirectory(), "Binaries");
+                        Directory.CreateDirectory(targetDir);
+                        var file = new FileInfo(additionalDependency.Path);
                         var targetFile = Path.Combine(targetDir,
                             Path.GetRelativePath(additionalDependency.Path, file.FullName));
                         var parentDir = new FileInfo(targetFile).Directory;
@@ -462,38 +521,11 @@ public class MsvcCompiler : CompilerBase
                         }
                         else
                         {
-                            File.Copy(file.FullName, targetFile, true);
+                            File.Copy(additionalDependency.Path, targetFile, true);
                         }
-                    }
 
-                    break;
-                }
-                case AdditionalDependency.DependencyType.File:
-                {
-                    var targetDir = additionalDependency.Target ??
-                                    Path.Join(Directory.GetCurrentDirectory(), "Binaries");
-                    Directory.CreateDirectory(targetDir);
-                    var file = new FileInfo(additionalDependency.Path);
-                    var targetFile = Path.Combine(targetDir,
-                        Path.GetRelativePath(additionalDependency.Path, file.FullName));
-                    var parentDir = new FileInfo(targetFile).Directory;
-                    while (parentDir is { Exists: false })
-                    {
-                        parentDir.Create();
-                        parentDir = parentDir.Parent;
+                        break;
                     }
-
-                    if (additionalDependency.Processor != null)
-                    {
-                        additionalDependency.Processor(additionalDependency.Path, targetFile);
-                    }
-                    else
-                    {
-                        File.Copy(additionalDependency.Path, targetFile, true);
-                    }
-
-                    break;
-                }
             }
         }
     }
