@@ -19,7 +19,7 @@ public abstract class ModuleBase
 
     /// <summary> Forced include directories to use. </summary>
     public AccessLimitList<string> ForceIncludes = new();
-    
+
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
     public AccessLimitList<ModuleReference> Dependencies = new();
 
@@ -121,10 +121,13 @@ public abstract class ModuleBase
             if (attr == null)
                 continue;
             var name = attr.GetName(field);
-            if (!options.TryGetValue(name, out var value) && attr.Required)
+            if (!options.TryGetValue(name, out var value))
             {
-                Context.AddMessage(ModuleContext.Message.SeverityTypes.Error,
+                if (attr.Required)
+                {
+                    Context.AddMessage(ModuleContext.Message.SeverityTypes.Error,
                     $"Option {name}: Option is required but isn't supplied");
+                }
                 continue;
             }
 
