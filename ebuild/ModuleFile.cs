@@ -13,6 +13,17 @@ public class ModuleFile
     private Type? _moduleType;
     private Assembly? _loadedAssembly;
     private ModuleBase? _compiledModule;
+    private BuildGraph? _buildGraph;
+
+    public BuildGraph? GetBuildGraph()
+    {
+        if (_buildGraph == null)
+        {
+            _buildGraph = new BuildGraph(GetCompiledModule()!);
+        }
+
+        return _buildGraph;
+    }
 
 
     private static readonly Regex DotnetErrorAndWarningRegex =
@@ -46,7 +57,7 @@ public class ModuleFile
     private static readonly ILogger ModuleFileLogger = EBuild.LoggerFactory.CreateLogger("Module File");
     private static readonly ILogger ModuleLogger = EBuild.LoggerFactory.CreateLogger("Module");
 
-    public async Task<ModuleBase?> CreateModuleInstance(ModuleContext context)
+    public async Task<ModuleBase?> CreateModuleInstance(ModuleInstancingParams instancingParams)
     {
         if (_compiledModule != null)
         {
@@ -69,8 +80,10 @@ public class ModuleFile
         }
 
         ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
+        ModuleContext context = (ModuleContext)instancingParams;
         context.SelfReference = _reference;
-        var created = constructor.Invoke(new object?[] { context });
+        context.Options = instancingParams?.Options ?? [];
+        var created = constructor.Invoke([context]);
         var failed = false;
         foreach (var m in context.Messages)
         {
@@ -96,6 +109,7 @@ public class ModuleFile
 
         _compiledModule = (ModuleBase)created;
         _compiledModule.PostConstruction();
+        _buildGraph = new BuildGraph(_compiledModule);
         return _compiledModule;
     }
 
@@ -239,8 +253,7 @@ public class ModuleFile
         ModuleInstancingParams instancingParams, AccessLimit? accessLimit = null)
     {
         List<Tuple<ModuleFile, AccessLimit>> l = new();
-        var selfContext = (ModuleContext)instancingParams;
-        var module = await CreateModuleInstance(selfContext);
+        var module = await CreateModuleInstance(instancingParams);
         if (module == null)
             return l;
         if (accessLimit is AccessLimit.Public or null)

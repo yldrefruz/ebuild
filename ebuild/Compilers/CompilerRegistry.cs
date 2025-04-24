@@ -47,11 +47,8 @@ public class CompilerRegistry
         {
             opts.Add(a.Key, a.Value);
         }
-
-        var moduleContext = (ModuleContext)instancingParams;
-        moduleContext.Options = opts;
         var moduleFile = (ModuleFile)instancingParams.SelfModuleReference;
-        var createdModule = await moduleFile.CreateModuleInstance(moduleContext);
+        var createdModule = await moduleFile.CreateModuleInstance(instancingParams);
         if (createdModule == null)
         {
             instancingParams.Logger?.LogError("Can't create compiler instance.");
