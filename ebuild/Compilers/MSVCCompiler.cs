@@ -468,58 +468,7 @@ public class MsvcCompiler : CompilerBase
         Logger.LogInformation("Processing additional dependencies");
         foreach (var additionalDependency in CurrentModule!.AdditionalDependencies.Joined())
         {
-            switch (additionalDependency.Type)
-            {
-                case AdditionalDependency.DependencyType.Directory:
-                    {
-                        var dir = new DirectoryInfo(additionalDependency.Path);
-                        var targetDir = additionalDependency.Target ??
-                                        Path.Join(Directory.GetCurrentDirectory(), "Binaries");
-                        Directory.CreateDirectory(targetDir);
-                        var files = dir.GetFiles("*", SearchOption.AllDirectories);
-                        foreach (var file in files)
-                        {
-                            var targetFile = Path.Combine(targetDir,
-                                Path.GetRelativePath(additionalDependency.Path, file.FullName));
-                            var parentDir = new FileInfo(targetFile).Directory;
-                            while (parentDir is { Exists: false })
-                            {
-                                parentDir.Create();
-                                parentDir = parentDir.Parent;
-                            }
-
-                            if (additionalDependency.Processor != null)
-                            {
-                                additionalDependency.Processor(additionalDependency.Path, targetFile);
-                            }
-                            else
-                            {
-                                File.Copy(file.FullName, targetFile, true);
-                            }
-                        }
-
-                        break;
-                    }
-                case AdditionalDependency.DependencyType.File:
-                    {
-                        var targetDir = additionalDependency.Target ??
-                                        Path.Join(Directory.GetCurrentDirectory(), "Binaries");
-                        Directory.CreateDirectory(targetDir);
-                        var file = new FileInfo(additionalDependency.Path);
-                        var targetFile = Path.Combine(targetDir,file.Name);
-
-                        if (additionalDependency.Processor != null)
-                        {
-                            additionalDependency.Processor(additionalDependency.Path, targetFile);
-                        }
-                        else
-                        {
-                            File.Copy(additionalDependency.Path, targetFile, true);
-                        }
-
-                        break;
-                    }
-            }
+            additionalDependency.Process(CurrentModule);
         }
     }
 
