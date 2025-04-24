@@ -506,14 +506,7 @@ public class MsvcCompiler : CompilerBase
                                         Path.Join(Directory.GetCurrentDirectory(), "Binaries");
                         Directory.CreateDirectory(targetDir);
                         var file = new FileInfo(additionalDependency.Path);
-                        var targetFile = Path.Combine(targetDir,
-                            Path.GetRelativePath(additionalDependency.Path, file.FullName));
-                        var parentDir = new FileInfo(targetFile).Directory;
-                        while (parentDir is { Exists: false })
-                        {
-                            parentDir.Create();
-                            parentDir = parentDir.Parent;
-                        }
+                        var targetFile = Path.Combine(targetDir,file.Name);
 
                         if (additionalDependency.Processor != null)
                         {
