@@ -19,7 +19,7 @@ public abstract class ModuleBase
 
     /// <summary> Forced include directories to use. </summary>
     public AccessLimitList<string> ForceIncludes = new();
-    
+
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
     public AccessLimitList<ModuleReference> Dependencies = new();
 
@@ -58,6 +58,12 @@ public abstract class ModuleBase
     public void PostConstruction()
     {
         Dependencies.Joined().ForEach(r => r.ResolveModulePath(this));
+        if (!Context.RequestedOutput.Equals("default", StringComparison.InvariantCultureIgnoreCase))
+        {
+            var foundOutputTransformer = GetOutputTransformers().FirstOrDefault(tuple =>
+                tuple.Item2.Equals(Context.RequestedOutput, StringComparison.InvariantCultureIgnoreCase));
+            foundOutputTransformer?.Item3.Invoke(this);
+        }
     }
 
     /*
@@ -139,5 +145,28 @@ public abstract class ModuleBase
                     $"Option {name}: Couldn't apply value {value}. Conversion from string to {field.FieldType.FullName} failed.\n{exception.Message}");
             }
         }
+    }
+
+
+    public IEnumerable<Tuple<string /*name*/, string /*id*/, MethodInvoker /*invoker for method*/>>
+        GetOutputTransformers()
+    {
+        return from method in GetType()
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            let foundAttr = method.GetCustomAttribute<OutputTransformerAttribute>()
+            where foundAttr != null
+            select new Tuple<string, string, MethodInvoker>(foundAttr.Name, foundAttr.Id,
+                MethodInvoker.Create(method));
+    }
+
+    public HashSet<Tuple<string, string>> GetAvailableOutputIdAndNames()
+    {
+        HashSet<Tuple<string, string>> names = new();
+        foreach (var transformer in GetOutputTransformers())
+        {
+            names.Add(new Tuple<string, string>(transformer.Item2, transformer.Item1));
+        }
+
+        return names;
     }
 }
