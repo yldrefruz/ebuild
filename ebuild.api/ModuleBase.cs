@@ -38,7 +38,9 @@ public abstract class ModuleBase
 
     /// <summary>The name of the module. If null will automatically deduce the name from the file name.</summary> 
     public string? Name;
-
+    /// <summary>
+    ///  The output directory for the module. This is relative to the build directory or absolute.
+    /// </summary>
     public string OutputDirectory = "Binaries";
 
     /// <summary>The cpp standard this module uses.</summary>
@@ -57,6 +59,7 @@ public abstract class ModuleBase
 
     public void PostConstruction()
     {
+        AdditionalDependencies.Joined().ForEach(d => d.SetOwnerModule(this));
         Dependencies.Joined().ForEach(r => r.ResolveModulePath(this));
         if (!Context.RequestedOutput.Equals("default", StringComparison.InvariantCultureIgnoreCase))
         {
@@ -156,10 +159,10 @@ public abstract class ModuleBase
     {
         return from method in GetType()
                 .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            let foundAttr = method.GetCustomAttribute<OutputTransformerAttribute>()
-            where foundAttr != null
-            select new Tuple<string, string, MethodInvoker>(foundAttr.Name, foundAttr.Id,
-                MethodInvoker.Create(method));
+               let foundAttr = method.GetCustomAttribute<OutputTransformerAttribute>()
+               where foundAttr != null
+               select new Tuple<string, string, MethodInvoker>(foundAttr.Name, foundAttr.Id,
+                   MethodInvoker.Create(method));
     }
 
     public HashSet<Tuple<string, string>> GetAvailableOutputIdAndNames()
@@ -171,5 +174,13 @@ public abstract class ModuleBase
         }
 
         return names;
+    }
+
+
+
+    public IEnumerable<string> GetResultName()
+    {
+
+        yield break;
     }
 }

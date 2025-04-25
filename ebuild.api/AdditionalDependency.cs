@@ -1,5 +1,13 @@
 ﻿namespace ebuild.api;
 
+/// <summary>
+/// Represents an additional dependency for a module. This can be either a file or a directory.
+/// 
+/// Points to improve:
+/// - The dependency copy strategy. 
+/// - Dependent modules copy strategy. How dependent modules should copy the dependencies.
+/// - Unnecessary copying of dependencies. If a dependency is already copied, it should not be copied again. Also compilation for dependent modules should not be copied as it will increase the compilation time incredibly.
+/// </summary>
 public class AdditionalDependency
 {
     public enum DependencyType
@@ -19,9 +27,20 @@ public class AdditionalDependency
     /// <summary>
     /// The target path where the dependency should be copied to.
     /// If null, the dependency will be copied to the same location as the source, but in the output directory.
-    /// The path must be absolute.
+    /// The path must be absolute. 
+    /// 
+    /// 
+    /// Macros are supported in the path. The following macros are available:
+    /// - ${RootOutputDir} - Absolute path of the output directory of the root module.
+    /// - ${OutputDir} - Absolute path of the output directory of the module that owns this dependency.
     /// </summary>
-    public string? TargetDirectory { get; }
+    public string? TargetDirectory { get; } = "${RootOutputDir}";
+
+    private ModuleBase? OwnerModule;
+    public void SetOwnerModule(ModuleBase module)
+    {
+        OwnerModule = module;
+    }
 
     public CustomProcessor? Processor { get; }
 
@@ -73,8 +92,11 @@ public class AdditionalDependency
         }
     }
 
-    public void Process(ModuleBase OwnerModule)
+    public void Process(ModuleBase RootModule)
     {
+        if (OwnerModule == null)
+            throw new NullReferenceException("OwnerModule must be set before processing the dependency.");
+        TargetDirectory = TargetDirectory?.Replace("${OutputDir}", OwnerModule.OutputDirectory) ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.OutputDirectory);
         switch (Type)
         {
             case DependencyType.Directory:

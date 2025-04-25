@@ -55,6 +55,12 @@ public class MsvcCompiler : CompilerBase
 
     private const string VsWhereUrl = "https://github.com/microsoft/vswhere/releases/download/3.1.7/vswhere.exe";
 
+    string GetObjectOutputFolder()
+    {
+        return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", CurrentModule.GetVariantId().ToString(), "obj");
+    }
+    string GetObjectPdbFolder() => GetObjectOutputFolder();
+
     bool DownloadVsWhere()
     {
         HttpClient client = new HttpClient();
@@ -119,7 +125,7 @@ public class MsvcCompiler : CompilerBase
         return Path.Join(_msvcToolRoot, "lib", targetArch);
     }
 
-    private static string GetShorterPath(string path, ModuleBase module)
+    private static string GetModuleFilePath(string path, ModuleBase module)
     {
         var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
         // We are in binary, so we should resolve the path from the binary folder.
@@ -186,12 +192,12 @@ public class MsvcCompiler : CompilerBase
     {
         args += module.Definitions.GetLimited(accessLimit).Select(definition => $"/D\"{definition}\"");
 
-        args += module.Includes.Joined().Select(include => $"/I\"{GetShorterPath(include, module)}\"");
-        args += module.ForceIncludes.Joined().Select(s => $"/FI{GetShorterPath(s, module)}");
+        args += module.Includes.Joined().Select(include => $"/I\"{GetModuleFilePath(include, module)}\"");
+        args += module.ForceIncludes.Joined().Select(s => $"/FI{GetModuleFilePath(s, module)}");
 
         if (includeSourceFiles)
         {
-            args += module.SourceFiles.Select(s => GetShorterPath(s, module));
+            args += module.SourceFiles.Select(s => GetModuleFilePath(s, module));
         }
     }
 
@@ -215,11 +221,14 @@ public class MsvcCompiler : CompilerBase
         {
             args += "/MD";
         }
+        args += $"/Fo: \"{GetObjectOutputFolder}\"";
 
         if (ProcessCount != null)
         {
             args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
         }
+
+
 
         args += AdditionalCompilerOptions;
 
@@ -443,11 +452,13 @@ public class MsvcCompiler : CompilerBase
         return true;
     }
 
-    private static void ClearObjectAndPdbFiles(bool shouldLog = true)
+    private void ClearObjectAndPdbFiles(bool shouldLog = true)
     {
-        List<string> files = new();
-        files.AddRange(Directory.GetFiles(Directory.GetCurrentDirectory(), "*.out", SearchOption.TopDirectoryOnly));
-        files.AddRange(Directory.GetFiles(Directory.GetCurrentDirectory(), "*.pdb", SearchOption.TopDirectoryOnly));
+        List<string> files =
+        [
+            .. Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly),
+            .. Directory.GetFiles(GetObjectPdbFolder(), "*.pdb", SearchOption.TopDirectoryOnly),
+        ];
         foreach (var file in files)
         {
             if (shouldLog)
@@ -476,19 +487,19 @@ public class MsvcCompiler : CompilerBase
     {
         if (CurrentModule == null)
             return;
-        var binaryDir = Path.Join(Directory.GetCurrentDirectory(), "Binaries");
         Logger.LogInformation("Linking program");
         ArgumentBuilder argumentBuilder = new();
         var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
-        var files = Directory.GetFiles(Path.Join(Directory.GetCurrentDirectory(), "Binaries"));
+        var files = Directory.GetFiles(Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, CurrentModule.OutputDirectory, CurrentModule.GetVariantId().ToString()));
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
-        files = files.Select(f => GetShorterPath(f, CurrentModule)).ToArray();
+        files = files.Select(f => GetModuleFilePath(f, CurrentModule)).ToArray();
         // ReSharper disable once StringLiteralTypo
         argumentBuilder += "/nologo";
         if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
             argumentBuilder += "/DEBUG";
-            argumentBuilder += $"/PDB:{Path.Join((CurrentModule.Name ?? CurrentModule.GetType().Name))}.pdb";
+            // example: /PDB:"C:\Users\user\module_1\Binaries\<variant_id>\module_1.pdb"
+            argumentBuilder += $"/PDB:{Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, CurrentModule.OutputDirectory, CurrentModule.GetVariantId().ToString(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb";
         }
 
         argumentBuilder += AdditionalLinkerOptions;
@@ -513,8 +524,12 @@ public class MsvcCompiler : CompilerBase
         }
 
         argumentBuilder +=
-            $"/OUT:\"{Path.Join(binaryDir, (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\"";
+            $"/OUT:\"{Path.Join(CurrentModule.Context.ModuleDirectory!.FullName,
+             CurrentModule.OutputDirectory,
+              CurrentModule.GetVariantId().ToString(),
+               (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\"";
 
+        // Add the library search paths for current module and the dependencies.
         argumentBuilder += CurrentModule.LibrarySearchPaths.Joined()
             .Select(current => $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
         var depTree = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName).GetDependencyTreeChecked();
@@ -524,9 +539,32 @@ public class MsvcCompiler : CompilerBase
                 dependency.GetCompiledModule().LibrarySearchPaths.Public.Select(current =>
                     $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
         }
-
+        // Add the output files for current module.
         argumentBuilder += files;
 
+        // Add the output file of the dependencies.
+        foreach (var dependency in depTree.ToEnumerable())
+        {
+            var compModule = dependency.GetCompiledModule();
+            switch (compModule.Type)
+            {
+                case ModuleType.Executable:
+                case ModuleType.ExecutableWin32:
+                    // No need to add the executable files. And they shouldn't even be referenced.
+                    throw new NotImplementedException("Executable modules are not supported as dependencies.");
+                case ModuleType.SharedLibrary:
+                    File.Copy(Path.Combine(compModule.Context.ModuleDirectory!.FullName, compModule.OutputDirectory, compModule.GetVariantId().ToString(), $"{compModule.Name}.dll"), Path.Combine(CurrentModule.Context.ModuleDirectory!.FullName, CurrentModule.OutputDirectory, CurrentModule.GetVariantId().ToString(), $"{CurrentModule.Name}.dll"), true); // copy the dll to the output directory.
+                    argumentBuilder += Path.Combine(compModule.Context.ModuleDirectory!.FullName, compModule.OutputDirectory, compModule.GetVariantId().ToString(), $"{compModule.Name}.lib"); // link the library
+                    break;
+                case ModuleType.StaticLibrary:
+                    argumentBuilder += Path.Combine(compModule.Context.ModuleDirectory!.FullName, compModule.OutputDirectory, compModule.GetVariantId().ToString(), $"{compModule.Name}.lib");
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Add the libraries for current module and the dependencies.
         argumentBuilder += CurrentModule.Libraries.Joined()
             .Select((a) => File.Exists(Path.GetFullPath(a)) ? Path.GetFullPath(a) : a);
         foreach (var dependency in depTree.ToEnumerable(AccessLimit.Public))
@@ -534,7 +572,7 @@ public class MsvcCompiler : CompilerBase
             argumentBuilder += dependency.GetCompiledModule().Libraries.Public
                 .Select((a) =>
                 {
-                    var shorterPath = GetShorterPath(a, dependency.GetCompiledModule());
+                    var shorterPath = GetModuleFilePath(a, dependency.GetCompiledModule());
                     return File.Exists(shorterPath) ? shorterPath : a;
                 });
         }
@@ -550,7 +588,6 @@ public class MsvcCompiler : CompilerBase
         using (Logger.BeginScope("Link"))
         {
             Logger.LogInformation("Launching link.exe with command file content {commandFileContent}", argumentString);
-            Directory.SetCurrentDirectory(binaryDir);
             var p = new ProcessStartInfo()
             {
                 Arguments = $"@\"{tempFile}\"",
@@ -558,7 +595,7 @@ public class MsvcCompiler : CompilerBase
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                WorkingDirectory = binaryDir,
+                WorkingDirectory = CurrentModule.Context.ModuleDirectory!.FullName,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true
@@ -618,7 +655,7 @@ public class MsvcCompiler : CompilerBase
         var files = Directory.GetFiles(binaryDir);
         //TODO: add files from the dependencies.
         files = files.Where(s => s.EndsWith(".obj")).ToArray();
-        files = files.Select(f => GetShorterPath(f, CurrentModule)).ToArray();
+        files = files.Select(f => GetModuleFilePath(f, CurrentModule)).ToArray();
         Directory.CreateDirectory(Path.Join(binaryDir, "lib"));
         // ReSharper disable once StringLiteralTypo
         ArgumentBuilder argumentBuilder = new();
