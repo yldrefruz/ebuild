@@ -34,7 +34,7 @@ public class AdditionalDependency
     /// - ${RootOutputDir} - Absolute path of the output directory of the root module.
     /// - ${OutputDir} - Absolute path of the output directory of the module that owns this dependency.
     /// </summary>
-    public string? TargetDirectory { get; } = "${RootOutputDir}";
+    public string? TargetDirectory { get; private set;} = "${RootOutputDir}";
 
     private ModuleBase? OwnerModule;
     public void SetOwnerModule(ModuleBase module)

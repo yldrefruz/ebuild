@@ -7,18 +7,43 @@ using Microsoft.Extensions.Logging;
 
 namespace ebuild;
 
-public class ModuleInstancingParams(ModuleReference moduleFileReference)
+public class ModuleInstancingParams(ModuleReference moduleFileReference) : IModuleInstancingParams
 {
+    public IModuleInstancingParams CreateCopyFor(ModuleReference targetModuleReference)
+    {
+        return new ModuleInstancingParams(targetModuleReference)
+        {
+            Configuration = Configuration,
+            CompilerName = CompilerName,
+            Architecture = Architecture,
+            PlatformName = PlatformName,
+            Options = Options,
+            Logger = Logger,
+            AdditionalCompilerOptions = AdditionalCompilerOptions,
+            AdditionalLinkerOptions = AdditionalLinkerOptions,
+            AdditionalDependencyPaths = AdditionalDependencyPaths
+        };
+    }
+
     public readonly ModuleReference SelfModuleReference = moduleFileReference;
+    public ModuleReference GetSelfModuleReference() => SelfModuleReference;
     public string Configuration = Config.Get().DefaultBuildConfiguration;
+    public string GetConfiguration() => Configuration;
     public string CompilerName = PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ?? "Null";
+    public string GetCompilerName() => CompilerName;
     public Architecture Architecture = RuntimeInformation.OSArchitecture;
+    public Architecture GetArchitecture() => Architecture;
     public string PlatformName = PlatformRegistry.GetHostPlatform().GetName();
+    public string GetPlatformName() => PlatformName;
     public Dictionary<string, string>? Options;
+    public Dictionary<string, string>? GetOptions() => Options;
     public ILogger? Logger;
     public List<string>? AdditionalCompilerOptions;
+    public List<string>? GetAdditionalCompilerOptions() => AdditionalCompilerOptions;
     public List<string>? AdditionalLinkerOptions;
+    public List<string>? GetAdditonalLinkerOptions() => AdditionalLinkerOptions;
     public List<string>? AdditionalDependencyPaths;
+    public List<string>? GetAdditionalDependencyPaths() => AdditionalDependencyPaths;
 
     /// <summary>
     /// Create a CompilerInstancingParams from the command line arguments and options.
@@ -48,14 +73,17 @@ public class ModuleInstancingParams(ModuleReference moduleFileReference)
         };
     }
 
-
-    public static explicit operator ModuleContext(ModuleInstancingParams p) => new(reference: p.SelfModuleReference,
-        platform: p.PlatformName, compiler: p.CompilerName)
+    public ModuleContext ToModuleContext() => new(reference: SelfModuleReference,
+        platform: PlatformName, compiler: CompilerName)
     {
-        AdditionalDependencyPaths = p.AdditionalDependencyPaths ?? new List<string>(),
-        Configuration = p.Configuration,
-        Options = p.Options ?? new Dictionary<string, string>(),
-        Messages = new List<ModuleContext.Message>(),
-        TargetArchitecture = p.Architecture
+        AdditionalDependencyPaths = AdditionalDependencyPaths ?? [],
+        Configuration = Configuration,
+        Options = Options ?? [],
+        Messages = [],
+        TargetArchitecture = Architecture,
+        InstancingParams = this,
     };
+
+
+    public static explicit operator ModuleContext(ModuleInstancingParams p) => p.ToModuleContext();
 }

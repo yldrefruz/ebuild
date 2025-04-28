@@ -1,7 +1,9 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
@@ -42,6 +44,8 @@ public abstract class ModuleBase
     ///  The output directory for the module. This is relative to the build directory or absolute.
     /// </summary>
     public string OutputDirectory = "Binaries";
+
+    public bool UseVariants = true;
 
     /// <summary>The cpp standard this module uses.</summary>
     public CppStandards CppStandard = CppStandards.Cpp20;
@@ -101,25 +105,28 @@ public abstract class ModuleBase
         if (_optionsString != null)
             return _optionsString;
         var strBuilder = new StringBuilder();
-        var serializer = new XmlSerializer(typeof(Tuple<string, object?>));
-        using (var xmlWriter = XmlWriter.Create(strBuilder))
+        var opts = GetOptions(onlyOutputChanging);
+        opts.OrderBy(x => x.Key, StringComparer.InvariantCultureIgnoreCase).ToList().ForEach(x =>
         {
-            foreach (var option in GetOptions(onlyOutputChanging))
-            {
-                serializer.Serialize(xmlWriter, option);
-            }
-        }
-
+            if (strBuilder.Length > 0)
+                strBuilder.Append('\n');
+            strBuilder.Append(x.Key).Append('=').Append(x.Value);
+        });
         _optionsString = strBuilder.ToString();
+        Console.WriteLine($"Options string: {strBuilder}");
         return _optionsString;
     }
 
     /**
      * Gets the id of the variant.
      */
-    public int GetVariantId()
+    public uint GetVariantId()
     {
-        return GetOptionsString(false).GetHashCode();
+        if (!UseVariants)
+            return 0;
+        var optionsString = GetOptionsString(true);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(optionsString));
+        return BitConverter.ToUInt32(hash, 0);
     }
 
     private void SetOptions(Dictionary<string, string> options)
@@ -176,11 +183,10 @@ public abstract class ModuleBase
         return names;
     }
 
-
-
-    public IEnumerable<string> GetResultName()
+    public string GetBinaryOutputDirectory()
     {
-
-        yield break;
+        if (UseVariants)
+            return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetVariantId().ToString()) + Path.DirectorySeparatorChar;
+        return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory) + Path.DirectorySeparatorChar;
     }
 }

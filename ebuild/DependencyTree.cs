@@ -3,7 +3,7 @@ using ebuild.api;
 
 namespace ebuild;
 
-public class DependencyTree
+public class DependencyTree : IDependencyTree
 {
     private Entry? _root;
 
@@ -95,26 +95,26 @@ public class DependencyTree
     }
 
     public async Task CreateFromModuleFile(ModuleFile module,
-        ModuleInstancingParams moduleInstancingParams)
+        IModuleInstancingParams moduleInstancingParams)
     {
         _root = new Entry(null, module, null);
         await CreateFromModuleFile(_root, moduleInstancingParams);
     }
 
     private static async Task CreateFromModuleFile(Entry entry,
-        ModuleInstancingParams moduleInstancingParams)
+        IModuleInstancingParams moduleInstancingParams)
     {
-        foreach (var child in from dependency in await entry.Module.GetDependencies(
-                     moduleInstancingParams)
-                 select new Entry(entry, dependency.Item1, dependency.Item2))
+        foreach (var child in await entry.Module.GetDependencies(
+                     moduleInstancingParams))
         {
-            entry.Append(child);
-            if (child.IsCircular())
+            Entry childEntry = new(entry, ModuleFile.Get(child.Item1), child.Item2);
+            entry.Append(childEntry);
+            if (childEntry.IsCircular())
             {
                 continue;
             }
 
-            await CreateFromModuleFile(child, moduleInstancingParams);
+            await CreateFromModuleFile(childEntry, moduleInstancingParams.CreateCopyFor(child.Item1));
         }
     }
 
@@ -143,12 +143,32 @@ public class DependencyTree
         return _root == null ? string.Empty : _root.ToString();
     }
 
-    public IEnumerable<ModuleFile> ToEnumerable(AccessLimit? accessLimit = null)
+    public IEnumerable<IModuleFile> ToEnumerable(AccessLimit? accessLimit = null)
     {
         if (_root == null) yield break;
         foreach (var childModule in _root.GetChildModules(accessLimit))
         {
             yield return childModule.Item1;
         }
+    }
+
+    public IEnumerable<IModuleFile> GetFirstLevelAndPublicDependencies()
+    {
+        return GetFirstLevelAndPublicDependencies(_root).Distinct();
+    }
+
+    private IEnumerable<IModuleFile> GetFirstLevelAndPublicDependencies(Entry? entry = null)
+    {
+        entry ??= _root;
+        if (entry == null) yield break;
+        // Get all first-level dependencies (children of root)
+        foreach (var child in entry.Children)
+        {
+            yield return child.Module;
+            if (child.Limit == AccessLimit.Public)
+                foreach (var grandChild in child.GetChildModules(AccessLimit.Public))
+                    yield return grandChild.Item1;
+        }
+
     }
 }

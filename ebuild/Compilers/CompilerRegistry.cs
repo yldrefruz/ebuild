@@ -42,11 +42,6 @@ public class CompilerRegistry
 
     public static async Task<CompilerBase?> CreateInstanceFor(ModuleInstancingParams instancingParams)
     {
-        var opts = new Dictionary<string, string>(instancingParams.Options ?? new Dictionary<string, string>());
-        foreach (var a in instancingParams.SelfModuleReference.GetOptions())
-        {
-            opts.Add(a.Key, a.Value);
-        }
         var moduleFile = (ModuleFile)instancingParams.SelfModuleReference;
         var createdModule = await moduleFile.CreateModuleInstance(instancingParams);
         if (createdModule == null)
@@ -54,15 +49,21 @@ public class CompilerRegistry
             instancingParams.Logger?.LogError("Can't create compiler instance.");
             return null;
         }
+        if (await moduleFile.HasCircularDependency(instancingParams))
+        {
+            instancingParams.Logger?.LogError("Module {module_name} has circular dependency.", createdModule.Name ?? createdModule.GetType().Name);
+            return null;
+        }
+        foreach (var dependency in createdModule.Dependencies.Joined())
+        {
+            await ModuleFile.Get(dependency).CreateModuleInstance(instancingParams.CreateCopyFor(dependency));
+        }
 
         var compiler = await GetInstance().Create(instancingParams.CompilerName);
         instancingParams.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
             createdModule.Name ?? createdModule.GetType().Name, compiler.GetName(),
             compiler.GetExecutablePath());
         compiler.SetModule(createdModule);
-        var targetWorkingDir = Path.GetFullPath(createdModule.OutputDirectory, moduleFile.Directory);
-        Directory.CreateDirectory(targetWorkingDir);
-        Directory.SetCurrentDirectory(targetWorkingDir);
         if (instancingParams.AdditionalCompilerOptions != null)
             compiler.AdditionalCompilerOptions.AddRange(instancingParams.AdditionalCompilerOptions!);
         if (instancingParams.AdditionalLinkerOptions != null)

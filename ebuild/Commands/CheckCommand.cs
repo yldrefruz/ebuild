@@ -46,21 +46,21 @@ public class CheckCommand
     private async Task CheckCircularDependency(ModuleInstancingParams moduleInstancingParams)
     {
         var file = (ModuleFile)moduleInstancingParams.SelfModuleReference;
-        var tree = await file.GetDependencyTree(moduleInstancingParams);
+        var tree = await file.BuildOrGetDependencyTree(moduleInstancingParams);
         if (tree == null)
         {
-            Logger.LogError("Failed to get dependency tree for {file}", file.FilePath);
+            Logger.LogError("Failed to get dependency tree for {file}", file.GetFilePath());
             return;
         }
 
         if (tree.HasCircularDependency())
         {
-            Logger.LogError("Circular dependency detected in {file}", file.FilePath);
+            Logger.LogError("Circular dependency detected in {file}", file.GetFilePath());
             Logger.LogError("\n{circular_dependency_graph}", tree.GetCircularDependencyGraphString());
         }
         else
         {
-            Logger.LogInformation("No circular dependency detected in {file}", file.FilePath);
+            Logger.LogInformation("No circular dependency detected in {file}", file.GetFilePath());
         }
     }
 
@@ -68,14 +68,14 @@ public class CheckCommand
     private async Task PrintDependencies(ModuleInstancingParams moduleInstancingParams)
     {
         var moduleFile = (ModuleFile)moduleInstancingParams.SelfModuleReference;
-        var depTree = await moduleFile.GetDependencyTree(moduleInstancingParams);
+        var depTree = await moduleFile.BuildOrGetDependencyTree(moduleInstancingParams);
         if (depTree == null)
         {
-            Logger.LogError("Failed to get dependency tree for {file}", moduleFile.FilePath);
+            Logger.LogError("Failed to get dependency tree for {file}", moduleFile.GetFilePath());
             return;
         }
 
-        Logger.LogInformation("Dependencies for {file}", moduleFile.FilePath);
+        Logger.LogInformation("Dependencies for {file}", moduleFile.GetFilePath());
         Logger.LogInformation("\n{dependencies}", depTree.ToString());
     }
 

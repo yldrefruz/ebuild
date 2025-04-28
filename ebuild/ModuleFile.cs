@@ -8,23 +8,11 @@ using Microsoft.Extensions.Logging;
 
 namespace ebuild;
 
-public class ModuleFile
+public class ModuleFile : IModuleFile
 {
     private Type? _moduleType;
     private Assembly? _loadedAssembly;
     private ModuleBase? _compiledModule;
-    private BuildGraph? _buildGraph;
-
-    public BuildGraph? GetBuildGraph()
-    {
-        if (_buildGraph == null)
-        {
-            _buildGraph = new BuildGraph(GetCompiledModule()!);
-        }
-
-        return _buildGraph;
-    }
-
 
     private static readonly Regex DotnetErrorAndWarningRegex =
         new Regex(@"^(?<path>.*): \s*(?<type>error|warning)\s*(?<code>[A-Z0-9]+):\s*(?<message>.+)$");
@@ -57,7 +45,7 @@ public class ModuleFile
     private static readonly ILogger ModuleFileLogger = EBuild.LoggerFactory.CreateLogger("Module File");
     private static readonly ILogger ModuleLogger = EBuild.LoggerFactory.CreateLogger("Module");
 
-    public async Task<ModuleBase?> CreateModuleInstance(ModuleInstancingParams instancingParams)
+    public async Task<ModuleBase?> CreateModuleInstance(IModuleInstancingParams instancingParams)
     {
         if (_compiledModule != null)
         {
@@ -80,9 +68,9 @@ public class ModuleFile
         }
 
         ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
-        ModuleContext context = (ModuleContext)instancingParams;
+        ModuleContext context = instancingParams.ToModuleContext();
         context.SelfReference = _reference;
-        context.Options = instancingParams?.Options ?? [];
+        context.Options = instancingParams?.GetOptions() ?? [];
         var created = constructor.Invoke([context]);
         var failed = false;
         foreach (var m in context.Messages)
@@ -109,7 +97,6 @@ public class ModuleFile
 
         _compiledModule = (ModuleBase)created;
         _compiledModule.PostConstruction();
-        _buildGraph = new BuildGraph(_compiledModule);
         return _compiledModule;
     }
 
@@ -155,11 +142,9 @@ public class ModuleFile
 
     private readonly ModuleReference _reference;
     private readonly DependencyTree _dependencyTree = new();
-    public string Directory => System.IO.Directory.GetParent(_reference.GetFilePath())!.FullName;
-    public string FilePath => _reference.GetFilePath();
 
-    public async Task<DependencyTree?> GetDependencyTree(
-        ModuleInstancingParams moduleInstancingParams, bool compileModule = true)
+    public async Task<IDependencyTree?> BuildOrGetDependencyTree(
+        IModuleInstancingParams moduleInstancingParams, bool compileModule = true)
     {
         if (_dependencyTree.IsEmpty() && !compileModule)
         {
@@ -174,14 +159,14 @@ public class ModuleFile
         return _dependencyTree;
     }
 
-    public DependencyTree GetDependencyTreeChecked() => _dependencyTree;
+    public IDependencyTree GetDependencyTree() => _dependencyTree;
 
     public readonly string Name;
 
     public static ModuleFile Get(ModuleReference moduleReference)
     {
         var path = moduleReference.GetFilePath();
-        var f = TryDirToModuleFile(path, out _);
+        var f = IModuleFile.TryDirToModuleFile(path, out _);
         if (!File.Exists(f)) throw new ModuleFileException(f);
         var fi = new FileInfo(f);
         if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
@@ -195,44 +180,10 @@ public class ModuleFile
         return mf;
     }
 
-    private static string TryDirToModuleFile(string path, out string name)
-    {
-        if (File.Exists(path))
-        {
-            name = Path.GetFileNameWithoutExtension(path);
-            return path;
-        }
-
-        if (File.Exists(Path.Join(path, "index.ebuild.cs")))
-        {
-            name = new DirectoryInfo(path).Name;
-            return
-                Path.Join(path,
-                    "index.ebuild.cs"); // index.ebuild.cs is the default file name or the most preferred one. for packages from internet.
-        }
-
-        if (File.Exists(Path.Join(path, new DirectoryInfo(path).Name + ".ebuild.cs")))
-        {
-            name = new DirectoryInfo(path).Name;
-            return Path.Join(path,
-                new DirectoryInfo(path).Name +
-                ".ebuild.cs"); // package <name>.ebuild.cs is the second most preferred one.
-        }
-
-        if (File.Exists(Path.Join(path, "ebuild.cs")))
-        {
-            name = new DirectoryInfo(path).Name;
-            return Path.Join(path, "ebuild.cs"); // ebuild.cs is the third most preferred one.
-        }
-
-        name = string.Empty;
-        return string.Empty;
-    }
-
     private ModuleFile(ModuleReference reference)
     {
         _reference = new ModuleReference(outputType: reference.GetOutput(),
-            path: TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath()), out var name),
+            path: IModuleFile.TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath()), out var name),
             version: reference.GetVersion(),
             options: reference.GetOptions());
         if (string.IsNullOrEmpty(_reference.GetFilePath()))
@@ -249,10 +200,10 @@ public class ModuleFile
         }
     }
 
-    public async Task<List<Tuple<ModuleFile, AccessLimit>>> GetDependencies(
-        ModuleInstancingParams instancingParams, AccessLimit? accessLimit = null)
+    public async Task<List<Tuple<ModuleReference, AccessLimit>>> GetDependencies(
+        IModuleInstancingParams instancingParams, AccessLimit? accessLimit = null)
     {
-        List<Tuple<ModuleFile, AccessLimit>> l = new();
+        List<Tuple<ModuleReference, AccessLimit>> l = new();
         var module = await CreateModuleInstance(instancingParams);
         if (module == null)
             return l;
@@ -260,7 +211,7 @@ public class ModuleFile
         {
             l.AddRange(module.Dependencies.GetLimited(AccessLimit.Public)
                 .Select(dependency =>
-                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetFilePath(), Directory)),
+                    new Tuple<ModuleReference, AccessLimit>(dependency,
                         AccessLimit.Public)));
         }
 
@@ -268,20 +219,20 @@ public class ModuleFile
         {
             l.AddRange(module.Dependencies.GetLimited(AccessLimit.Private)
                 .Select(dependency =>
-                    new Tuple<ModuleFile, AccessLimit>(Get(Path.GetFullPath(dependency.GetFilePath(), Directory)),
+                    new Tuple<ModuleReference, AccessLimit>(dependency,
                         AccessLimit.Private)));
         }
 
         return l;
     }
 
-    public async Task<bool> HasCircularDependency(ModuleInstancingParams instancingParams)
+    public async Task<bool> HasCircularDependency(IModuleInstancingParams instancingParams)
     {
-        var tree = await GetDependencyTree(instancingParams);
+        var tree = await BuildOrGetDependencyTree(instancingParams);
         return tree != null && tree.HasCircularDependency();
     }
 
-    private bool HasChanged()
+    public bool HasChanged()
     {
         return GetLastEditTime() == null || GetCachedEditTime() == null || GetLastEditTime() != GetCachedEditTime();
     }
@@ -299,7 +250,7 @@ public class ModuleFile
         }
     }
 
-    private void UpdateCachedEditTime()
+    public void UpdateCachedEditTime()
     {
         var lastEditTime = GetLastEditTime();
         if (lastEditTime == null) return;
@@ -309,7 +260,7 @@ public class ModuleFile
         fs.Write(Encoding.UTF8.GetBytes(lastEditTime.ToString()!));
     }
 
-    private FileInfo GetCachedEditTimeFile() => new(Path.Join(Directory, ".ebuild", Name, "last_edit.cache"));
+    private FileInfo GetCachedEditTimeFile() => new(Path.Join(GetDirectory(), ".ebuild", Name, "last_edit.cache"));
 
     private DateTime? GetCachedEditTime()
     {
@@ -324,16 +275,16 @@ public class ModuleFile
 
     private bool TryGetModuleMetaFileName(out string fileName)
     {
-        if (File.Exists(Path.Join(Directory, $"{Name}.ebuild.meta")))
+        if (File.Exists(Path.Join(GetDirectory(), $"{Name}.ebuild.meta")))
         {
-            fileName = Path.Join(Directory, $"{Name}.ebuild.meta");
+            fileName = Path.Join(GetDirectory(), $"{Name}.ebuild.meta");
             return true;
         }
 
         // The short file name only applies to the short names
         if (IsShortFileName(out var t))
         {
-            var mFile = Path.Join(Directory, t.Replace("cs", "meta"));
+            var mFile = Path.Join(GetDirectory(), t.Replace("cs", "meta"));
             if (File.Exists(mFile))
             {
                 fileName = mFile;
@@ -384,7 +335,7 @@ public class ModuleFile
 
     private async Task CreateOrUpdateSolution()
     {
-        var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(Directory, ".ebuild"));
+        var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
         var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
         var moduleProjectFileLocation =
             Path.Join(moduleProjectFileDir, Name + ".ebuild_module.csproj");
@@ -421,7 +372,7 @@ public class ModuleFile
     /// <exception cref="ModuleFileCompileException">The module file couldn't be compiled.</exception>
     private async Task<Assembly> CompileAndLoad()
     {
-        var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(Directory, ".ebuild"));
+        var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
         var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, Name, Name + ".ebuild_module.dll");
         if (!HasChanged())
             return Assembly.LoadFile(toLoadDllFile);
@@ -452,13 +403,13 @@ public class ModuleFile
                                                 </PropertyGroup>
                                                 <ItemGroup>
                                                     <Reference Include="{ebuildApiDll}"/>
-                                                    {GetModuleMeta()?.AdditionalReferences?.Aggregate((current, f) => current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(Directory, f))}\"/>\n") ?? string.Empty}
+                                                    {GetModuleMeta()?.AdditionalReferences?.Aggregate((current, f) => current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(GetDirectory(), f))}\"/>\n") ?? string.Empty}
                                                     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0"/>
                                                     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0"/>
                                                 </ItemGroup>
                                                 <ItemGroup>
                                                     <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _reference.GetFilePath())}"/>
-                                                    {GetModuleMeta()?.AdditionalCompilationFiles?.Aggregate((current, f) => current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(Directory, f))}\"/>\n") ?? string.Empty}
+                                                    {GetModuleMeta()?.AdditionalCompilationFiles?.Aggregate((current, f) => current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(GetDirectory(), f))}\"/>\n") ?? string.Empty}
                                                 </ItemGroup>
                                                 <ItemGroup>
                                                     <Compile Remove="**/*"/>
@@ -475,7 +426,7 @@ public class ModuleFile
 
         var psi = new ProcessStartInfo
         {
-            WorkingDirectory = Directory,
+            WorkingDirectory = GetDirectory(),
             FileName = "dotnet",
             Arguments = $"build {moduleProjectFileLocation} --configuration Release",
             UseShellExecute = false,
@@ -542,12 +493,12 @@ public class ModuleFile
         logger.LogDebug("loading the assembly {dll}", toLoadDllFile);
         return Assembly.LoadFile(toLoadDllFile);
     }
-
+    // TODO: This requires a better way to compare variants. And treat the variants as different file.
     public override bool Equals(object? obj)
     {
         if (obj is ModuleFile mf)
         {
-            return mf.FilePath == FilePath;
+            return mf.GetFilePath() == GetFilePath();
         }
 
         return false;
@@ -555,8 +506,13 @@ public class ModuleFile
 
     public override int GetHashCode()
     {
-        return _reference.GetFilePath().GetHashCode();
+        return GetSelfReference().GetFilePath().GetHashCode();
     }
+
+    public string GetFilePath() => GetSelfReference().GetFilePath();
+    public string GetDirectory() => Path.GetDirectoryName(GetSelfReference().GetFilePath())!;
+
+    public ModuleReference GetSelfReference() => _reference;
 
     private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();
 

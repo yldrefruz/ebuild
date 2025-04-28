@@ -29,6 +29,7 @@ public class ModuleContext
     public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
     public Dictionary<string, string> Options = new();
     public List<string> AdditionalDependencyPaths = new();
+    public IModuleInstancingParams? InstancingParams;
 
 
     public FileInfo ModuleFile => new(SelfReference.GetFilePath());
