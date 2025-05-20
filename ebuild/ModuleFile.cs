@@ -364,9 +364,8 @@ public class ModuleFile : IModuleFile
         System.IO.Directory.CreateDirectory(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName);
         await using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
         {
-            await using (var writer = new StreamWriter(moduleProjectFile))
-            {
-                var moduleProjectContent = $"""
+            await using var writer = new StreamWriter(moduleProjectFile);
+            var moduleProjectContent = $"""
                                             <Project Sdk="Microsoft.NET.Sdk">
                                                 <PropertyGroup>
                                                     <OutputType>Library</OutputType>
@@ -378,13 +377,13 @@ public class ModuleFile : IModuleFile
                                                 </PropertyGroup>
                                                 <ItemGroup>
                                                     <Reference Include="{ebuildApiDll}"/>
-                                                    {GetModuleMeta()?.AdditionalReferences?.Aggregate((current, f) => current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(GetDirectory(), f))}\"/>\n") ?? string.Empty}
+                                                    {GetModuleMeta()?.GetAdditionalReferenceNodes(moduleProjectFileDir, GetDirectory()) ?? string.Empty}
                                                     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0"/>
                                                     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0"/>
                                                 </ItemGroup>
                                                 <ItemGroup>
                                                     <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _reference.GetFilePath())}"/>
-                                                    {GetModuleMeta()?.AdditionalCompilationFiles?.Aggregate((current, f) => current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(GetDirectory(), f))}\"/>\n") ?? string.Empty}
+                                                    {GetModuleMeta()?.GetAdditionalCompileNodes(moduleProjectFileDir, GetDirectory()) ?? string.Empty}
                                                 </ItemGroup>
                                                 <ItemGroup>
                                                     <Compile Remove="**/*"/>
@@ -392,9 +391,8 @@ public class ModuleFile : IModuleFile
                                                 </ItemGroup>
                                             </Project>
                                             """;
-                // ReSharper restore StringLiteralTypo
-                await writer.WriteAsync(moduleProjectContent);
-            }
+            // ReSharper restore StringLiteralTypo
+            await writer.WriteAsync(moduleProjectContent);
         }
 
         await CreateOrUpdateSolution();
@@ -468,7 +466,7 @@ public class ModuleFile : IModuleFile
         logger.LogDebug("loading the assembly {dll}", toLoadDllFile);
         return Assembly.LoadFile(toLoadDllFile);
     }
-    // TODO: This requires a better way to compare variants. And treat the variants as different file.
+    // TODO: This requires a better way to compare variants. And treat the variants as different files.
     public override bool Equals(object? obj)
     {
         if (obj is ModuleFile mf)

@@ -1,12 +1,9 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Xml;
-using System.Xml.Serialization;
 
 namespace ebuild.api;
 
@@ -25,6 +22,10 @@ public abstract class ModuleBase
     /// <summary>Other modules to depend on (ebuild modules.)</summary> 
     public AccessLimitList<ModuleReference> Dependencies = new();
 
+    /// <summary>
+    /// The search paths to use for dependencies.
+    /// This is used to find the dependencies.
+    /// </summary>
     public List<string> DependencySearchPaths = new();
 
     /// <summary>Dependencies to add for this module. These are copied to the build directory.</summary>
@@ -36,15 +37,24 @@ public abstract class ModuleBase
     /// <summary>The library paths to search for. Absolute or relevant</summary>
     public AccessLimitList<string> LibrarySearchPaths = new();
 
+    /// <summary>
+    /// The source files to use. This is a list of files which are used to compile the module.
+    /// </summary>
     public List<string> SourceFiles = new();
 
-    /// <summary>The name of the module. If null will automatically deduce the name from the file name.</summary> 
+    /// <summary>
+    /// The name of the module. If null will automatically deduce the name from the file name.
+    /// </summary> 
     public string? Name;
     /// <summary>
     ///  The output directory for the module. This is relative to the build directory or absolute.
+    ///  The variant directory will be inside this directory.
     /// </summary>
     public string OutputDirectory = "Binaries";
 
+    /// <summary>
+    /// Should we use variants for this module?
+    /// </summary>
     public bool UseVariants = true;
 
     /// <summary>The cpp standard this module uses.</summary>
@@ -61,6 +71,10 @@ public abstract class ModuleBase
         SetOptions(context.Options);
     }
 
+    /// <summary>
+    /// Called after the module is constructed.
+    /// This is used for post construction tasks.
+    /// </summary>
     public void PostConstruction()
     {
         AdditionalDependencies.Joined().ForEach(d => d.SetOwnerModule(this));
@@ -73,16 +87,37 @@ public abstract class ModuleBase
         }
     }
 
-    /*
-     * Functions to check support.
-     */
+    /// <summary>
+    /// Checks if the module is supported on the current platform.
+    /// This is used to check if the module can be compiled on the current platform.
+    /// </summary>
+    /// <param name="inPlatformBase">The platform to compile for</param>
+    /// <returns>whether support is available</returns>
     public virtual bool IsPlatformSupported(PlatformBase inPlatformBase) => true;
 
+    /// <summary>
+    /// Checks if the compiler is supported.
+    /// This is used to check if the module can be compiled with the given compiler.
+    /// </summary>
+    /// <param name="inCompilerBase">The compiler we try to compile this module with.</param>
+    /// <returns>whether support is available</returns>
     public virtual bool IsCompilerSupported(CompilerBase inCompilerBase) => true;
 
+    /// <summary>
+    /// Checks if the architecture is supported.
+    /// This is used to check if the module can be compiled for the given architecture.
+    /// </summary>
+    /// <param name="architecture">The architecture to check for</param>
+    /// <returns>true if support is available, false otherwise</returns>
     public virtual bool IsArchitectureSupported(Architecture architecture) => true;
 
 
+    /// <summary>
+    /// Gets the options for this module.
+    /// The options are the fields which are marked with the ModuleOptionAttribute.
+    /// </summary>
+    /// <param name="onlyOutputChanging">If true returns only output changing options, otherwise returns all options.</param>
+    /// <returns>the resulting option dictionary</returns>
     public Dictionary<string, object?> GetOptions(bool onlyOutputChanging = false)
     {
         Dictionary<string, object?> d = new();
@@ -100,6 +135,11 @@ public abstract class ModuleBase
 
     private string? _optionsString;
 
+    /// <summary>
+    /// Gets the options string for this module.
+    /// The options string is a string which contains all of the options for this module.
+    /// It is used to generate the variant id.
+    /// </summary>
     private string GetOptionsString(bool onlyOutputChanging)
     {
         if (_optionsString != null)
@@ -117,9 +157,9 @@ public abstract class ModuleBase
         return _optionsString;
     }
 
-    /**
-     * Gets the id of the variant.
-     */
+    /// <summary>
+    ///Gets the id of the variant.
+    /// </summary>
     public uint GetVariantId()
     {
         if (!UseVariants)
@@ -129,6 +169,10 @@ public abstract class ModuleBase
         return BitConverter.ToUInt32(hash, 0);
     }
 
+    /// <summary>
+    /// Sets the options for this module.
+    /// </summary>
+    /// <param name="options">the dictionary containing options to pass.</param>
     private void SetOptions(Dictionary<string, string> options)
     {
         foreach (var field in GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic))
@@ -160,7 +204,13 @@ public abstract class ModuleBase
         }
     }
 
-
+    /// <summary>
+    /// Gets all of the output transformers for this module.
+    /// The output transformers are methods which are marked with the OutputTransformerAttribute.
+    /// </summary>
+    /// <returns>
+    /// A list of tuples which contain the name, id and method invoker for the output transformers.
+    /// </returns>
     public IEnumerable<Tuple<string /*name*/, string /*id*/, MethodInvoker /*invoker for method*/>>
         GetOutputTransformers()
     {
@@ -172,6 +222,9 @@ public abstract class ModuleBase
                    MethodInvoker.Create(method));
     }
 
+    /// <summary>
+    /// Get a list of tuples which contain the id and name of the output transformers.
+    /// </summary>
     public HashSet<Tuple<string, string>> GetAvailableOutputIdAndNames()
     {
         HashSet<Tuple<string, string>> names = new();
@@ -183,10 +236,27 @@ public abstract class ModuleBase
         return names;
     }
 
+    /// <summary>
+    /// Gets the current output transformer name
+    /// If no transformer is passed, the result will be "default"
+    /// </summary>
+    public string GetOutputTransformerName()
+    {
+        var foundOutputTransformer = GetOutputTransformers().FirstOrDefault(tuple =>
+            tuple.Item2.Equals(Context.RequestedOutput, StringComparison.InvariantCultureIgnoreCase));
+        if (foundOutputTransformer == null)
+            return "default";
+        return foundOutputTransformer.Item1;
+    }
+
+    /// <summary>
+    /// Gets the output directory for the module. 
+    /// The path is absolute and contains the variant id if variants are used.
+    /// </summary>
     public string GetBinaryOutputDirectory()
     {
         if (UseVariants)
-            return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetVariantId().ToString()) + Path.DirectorySeparatorChar;
-        return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory) + Path.DirectorySeparatorChar;
+            return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName(), GetVariantId().ToString()) + Path.DirectorySeparatorChar;
+        return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName()) + Path.DirectorySeparatorChar;
     }
 }

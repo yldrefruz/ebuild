@@ -96,12 +96,12 @@ public class AdditionalDependency
     {
         if (OwnerModule == null)
             throw new NullReferenceException("OwnerModule must be set before processing the dependency.");
-        TargetDirectory = TargetDirectory?.Replace("${OutputDir}", OwnerModule.OutputDirectory) ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.OutputDirectory);
+        TargetDirectory = TargetDirectory?.Replace("$(OutputDir)", OwnerModule.GetBinaryOutputDirectory()) ?? OwnerModule.GetBinaryOutputDirectory();
         switch (Type)
         {
             case DependencyType.Directory:
                 {
-                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.OutputDirectory);
+                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
                     Directory.CreateDirectory(targetDir); // Create the target directory if it doesn't exist
                     foreach (var file in Directory.GetFiles(DependencyPath, "*", SearchOption.AllDirectories))
                     {
@@ -120,7 +120,7 @@ public class AdditionalDependency
                 }
             case DependencyType.File:
                 {
-                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.OutputDirectory);
+                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
                     Directory.CreateDirectory(targetDir);
                     var targetFile = Path.Combine(targetDir, Path.GetFileName(DependencyPath));
                     if (Processor == null)
