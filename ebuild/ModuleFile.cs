@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ebuild.api;
 using Microsoft.Extensions.Logging;
+using ebuild.api.exceptions;
 
 namespace ebuild;
 
@@ -16,32 +17,6 @@ public class ModuleFile : IModuleFile
 
     private static readonly Regex DotnetErrorAndWarningRegex =
         new Regex(@"^(?<path>.*): \s*(?<type>error|warning)\s*(?<code>[A-Z0-9]+):\s*(?<message>.+)$");
-
-
-    private class ConstructorNotFoundException : Exception
-    {
-        public ConstructorNotFoundException(Type type) : base(
-            $"{type.Name}(ModuleContext context) not found.")
-        {
-        }
-    }
-
-    private class ModuleConstructionFailed : Exception;
-
-    private class ModuleFileException : Exception
-    {
-        public ModuleFileException(string file) : base($"{file} is not a valid module file.")
-        {
-        }
-    }
-
-    private class ModuleFileCompileException : Exception
-    {
-        public ModuleFileCompileException(string file) : base($"{file} could not be compiled.")
-        {
-        }
-    }
-
     private static readonly ILogger ModuleFileLogger = EBuild.LoggerFactory.CreateLogger("Module File");
     private static readonly ILogger ModuleLogger = EBuild.LoggerFactory.CreateLogger("Module");
 
@@ -64,7 +39,7 @@ public class ModuleFile : IModuleFile
         var constructor = moduleType.GetConstructor(new[] { typeof(ModuleContext) });
         if (constructor == null)
         {
-            throw new ConstructorNotFoundException((await GetModuleType())!);
+            throw new ModuleConstructorNotFoundException(moduleType);
         }
 
         ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
@@ -92,7 +67,7 @@ public class ModuleFile : IModuleFile
 
         if (failed)
         {
-            throw new ModuleConstructionFailed();
+            throw new ModuleConstructionFailedException(moduleType);
         }
 
         _compiledModule = (ModuleBase)created;
@@ -117,7 +92,7 @@ public class ModuleFile : IModuleFile
             {
                 _loadedAssembly = await CompileAndLoad();
             }
-            catch (ModuleFileCompileException exception)
+            catch (ModuleFileCompilationFailedException exception)
             {
                 ModuleFileLogger.LogError("Can't find the type: {message}", exception.Message);
                 return null;
@@ -134,7 +109,7 @@ public class ModuleFile : IModuleFile
 
         if (_moduleType == null)
         {
-            throw new ModuleFileException(_reference.GetFilePath());
+            throw new ModuleFileNotFoundException(_reference.GetFilePath());
         }
 
         return _moduleType!;
@@ -167,7 +142,7 @@ public class ModuleFile : IModuleFile
     {
         var path = moduleReference.GetFilePath();
         var f = IModuleFile.TryDirToModuleFile(path, out _);
-        if (!File.Exists(f)) throw new ModuleFileException(f);
+        if (!File.Exists(f)) throw new ModuleFileNotFoundException(f);
         var fi = new FileInfo(f);
         if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
         {
@@ -188,7 +163,7 @@ public class ModuleFile : IModuleFile
             options: reference.GetOptions());
         if (string.IsNullOrEmpty(_reference.GetFilePath()))
         {
-            throw new ModuleFileException(_reference.GetFilePath());
+            throw new ModuleFileNotFoundException(_reference.GetFilePath());
         }
 
         Name = name;
@@ -480,7 +455,7 @@ public class ModuleFile : IModuleFile
         await p.WaitForExitAsync();
         if (p.ExitCode != 0)
         {
-            throw new ModuleFileCompileException(_reference.GetFilePath());
+            throw new ModuleFileCompilationFailedException(_reference.GetFilePath());
         }
 
 
