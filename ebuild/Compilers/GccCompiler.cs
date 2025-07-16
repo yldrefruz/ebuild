@@ -427,16 +427,7 @@ public class GccCompiler : CompilerBase
 
     private string GetObjectOutputFolder()
     {
-        if (CurrentModule == null)
-            throw new NullReferenceException("CurrentModule is null.");
-        
-        if (CurrentModule.UseVariants)
-            return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
-                ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", 
-                CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
-        
-        return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
-            ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
+        return CompilerUtils.GetObjectOutputFolder(CurrentModule);
     }
 
     private void ParseGccOutput(string output)

@@ -33,11 +33,7 @@ public class MsvcCompiler : CompilerBase
 
     string GetObjectOutputFolder()
     {
-        if (CurrentModule == null)
-            throw new NullReferenceException("CurrentModule is null.");
-        if (CurrentModule.UseVariants)
-            return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
-        return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
+        return CompilerUtils.GetObjectOutputFolder(CurrentModule);
     }
     string GetObjectPdbFolder() => GetObjectOutputFolder();
 
@@ -423,24 +419,7 @@ public class MsvcCompiler : CompilerBase
 
     private void ClearObjectAndPdbFiles(bool shouldLog = true)
     {
-        List<string> files =
-        [
-            .. Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly),
-            .. Directory.GetFiles(GetObjectPdbFolder(), "*.pdb", SearchOption.TopDirectoryOnly),
-        ];
-        foreach (var file in files)
-        {
-            if (shouldLog)
-                Logger.LogDebug("Compilation file {file} is being removed", file);
-            try
-            {
-                File.Delete(Path.GetFullPath(file));
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
-        }
+        CompilerUtils.ClearObjectAndPdbFiles(CurrentModule, shouldLog);
     }
 
     private void ProcessAdditionalDependencies()
