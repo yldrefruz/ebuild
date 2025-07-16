@@ -8,31 +8,58 @@ namespace ebuild.Compilers;
 [Compiler("Gcc")]
 public class GccCompiler : CompilerBase
 {
-    private static readonly ILogger Logger =
-        LoggerFactory
-            .Create(builder => builder.AddConsole().AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.IncludeScopes = true;
-            }))
-            .CreateLogger("GCC Compiler");
+    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("GCC Compiler");
 
     private string _gccPath = string.Empty;
 
     public override bool IsAvailable(PlatformBase platform)
     {
-        return platform.GetName() == "Linux";
+        // Check if platform is Linux
+        if (platform.GetName() != "Linux")
+            return false;
+            
+        // Check if gcc is actually available on the system
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "gcc",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                process.WaitForExit();
+                return process.ExitCode == 0;
+            }
+        }
+        catch
+        {
+            // gcc not found or not executable
+        }
+        
+        return false;
     }
 
     public override List<ModuleBase> FindCircularDependencies()
     {
-        // Basic implementation - return empty list for now
-        return new List<ModuleBase>();
+        throw new NotImplementedException();
     }
 
     public override Task<bool> Generate(string type, object? data = null)
     {
-        // Basic implementation - no generation support for now
+        if (type == "CompileCommandsJSON")
+        {
+            // TODO: Implement compile commands JSON generation for GCC
+            Logger.LogWarning("CompileCommandsJSON generation is not yet implemented for GCC compiler");
+            return Task.FromResult(false);
+        }
+        
         return Task.FromResult(false);
     }
 
