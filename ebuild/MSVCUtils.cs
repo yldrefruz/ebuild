@@ -8,15 +8,15 @@ public static class MSVCUtils
     public const string VsWhereUrl = "https://github.com/microsoft/vswhere/releases/download/3.1.7/vswhere.exe";
     private const string VsWhereHash = "C54F3B7C9164EA9A0DB8641E81ECDDA80C2664EF5A47C4191406F848CC07C662";
 
-    public static string GetVsWhereDirectory(string component)
+    public static string GetVsWhereDirectory()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Join(localAppData, "ebuild", component, "msvc", "vswhere");
+        return Path.Join(localAppData, "ebuild", "msvc", "vswhere");
     }
 
-    public static bool VswhereExists(string component)
+    public static bool VswhereExists()
     {
-        var vsWhereExec = Path.Join(GetVsWhereDirectory(component), "vswhere.exe");
+        var vsWhereExec = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
         if (!File.Exists(vsWhereExec))
             return false;
         using var shaHasher = SHA256.Create();
@@ -30,7 +30,7 @@ public static class MSVCUtils
         return hashString == VsWhereHash;
     }
 
-    public static bool DownloadVsWhere(string component)
+    public static bool DownloadVsWhere()
     {
         HttpClient client = new HttpClient();
         byte[] vswhereBytes;
@@ -49,7 +49,7 @@ public static class MSVCUtils
 
         var pathSegments = VsWhereUrl.Split("/");
         var version = pathSegments[pathSegments.Length - 1 - 1];
-        var vswhereDirectory = GetVsWhereDirectory(component);
+        var vswhereDirectory = GetVsWhereDirectory();
         Directory.CreateDirectory(vswhereDirectory);
         var versionFile = File.Create(Path.Join(vswhereDirectory, "VERSION"));
         TextWriter writer = new StreamWriter(versionFile, Encoding.UTF8);

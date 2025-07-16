@@ -24,21 +24,6 @@ public class MsvcLinker : LinkerBase
             }))
             .CreateLogger("MSVC Linker");
 
-    private static string GetVsWhereDirectory()
-    {
-        return MSVCUtils.GetVsWhereDirectory("linkers");
-    }
-
-    private bool VswhereExists()
-    {
-        return MSVCUtils.VswhereExists("linkers");
-    }
-
-    bool DownloadVsWhere()
-    {
-        return MSVCUtils.DownloadVsWhere("linkers");
-    }
-
     public override bool IsAvailable(PlatformBase platform)
     {
         return platform.GetName() == "Win32";
@@ -46,9 +31,9 @@ public class MsvcLinker : LinkerBase
 
     public override async Task<bool> Setup()
     {
-        if (!VswhereExists())
+        if (!MSVCUtils.VswhereExists())
         {
-            if (!DownloadVsWhere())
+            if (!MSVCUtils.DownloadVsWhere())
             {
                 throw new Exception(
                     $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
@@ -58,7 +43,7 @@ public class MsvcLinker : LinkerBase
         var toolRoot = Config.Get().MsvcPath ?? string.Empty;
         if (string.IsNullOrEmpty(toolRoot))
         {
-            var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
+            var vsWhereExecutable = Path.Join(MSVCUtils.GetVsWhereDirectory(), "vswhere.exe");
             const string args =
                 "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
             var vsWhereProcess = new Process();

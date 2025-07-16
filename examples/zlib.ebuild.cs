@@ -20,6 +20,9 @@ public class ZlibEbuild : ModuleBase
     {
         Type = ModuleType.StaticLibrary;
         Name = "zlib";
+        
+        // Setup should be called in constructor as per README
+        _ = Task.Run(async () => await Setup());
     }
 
     public async Task<bool> Setup()
@@ -196,7 +199,7 @@ public class ZlibEbuild : ModuleBase
         }
     }
     
-    private void SetupSourceFiles(string extractPath)
+    public void SetupSourceFiles(string extractPath)
     {
         // Add main zlib source files
         var sourceFiles = new[]

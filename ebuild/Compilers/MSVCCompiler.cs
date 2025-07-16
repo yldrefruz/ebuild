@@ -31,21 +31,6 @@ public class MsvcCompiler : CompilerBase
             }))
             .CreateLogger("MSVC Compiler");
 
-    private static string GetVsWhereDirectory()
-    {
-        return MSVCUtils.GetVsWhereDirectory("compilers");
-    }
-
-    private bool VswhereExists()
-    {
-        return MSVCUtils.VswhereExists("compilers");
-    }
-
-    bool DownloadVsWhere()
-    {
-        return MSVCUtils.DownloadVsWhere("compilers");
-    }
-
     string GetObjectOutputFolder()
     {
         if (CurrentModule == null)
@@ -238,9 +223,9 @@ public class MsvcCompiler : CompilerBase
 
     public override async Task<bool> Setup()
     {
-        if (!VswhereExists())
+        if (!MSVCUtils.VswhereExists())
         {
-            if (!DownloadVsWhere())
+            if (!MSVCUtils.DownloadVsWhere())
             {
                 throw new Exception(
                     $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
@@ -250,7 +235,7 @@ public class MsvcCompiler : CompilerBase
         var toolRoot = Config.Get().MsvcPath ?? string.Empty;
         if (string.IsNullOrEmpty(toolRoot))
         {
-            var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
+            var vsWhereExecutable = Path.Join(MSVCUtils.GetVsWhereDirectory(), "vswhere.exe");
             const string args =
                 "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
             var vsWhereProcess = new Process();
@@ -421,33 +406,12 @@ public class MsvcCompiler : CompilerBase
 
         Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
         
-        // Use the linker if available
+        // Use the linker if available, otherwise use default linker
         bool linkingSuccess = true;
-        if (Linker != null)
-        {
-            linkingSuccess = await Linker.Link();
-        }
-        else
-        {
-            // Fall back to the old linking logic for backward compatibility
-            switch (CurrentModule.Type)
-            {
-                case ModuleType.StaticLibrary:
-                    {
-                        await CallLibExe();
-                        break;
-                    }
-                case ModuleType.SharedLibrary:
-                case ModuleType.Executable:
-                case ModuleType.ExecutableWin32:
-                    {
-                        await CallLinkExe();
-                        break;
-                    }
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
+        var linker = Linker ?? GetDefaultLinker();
+        await linker.Setup();
+        linker.SetModule(CurrentModule);
+        linkingSuccess = await linker.Link();
 
         if (linkingSuccess)
         {

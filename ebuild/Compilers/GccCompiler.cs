@@ -321,10 +321,13 @@ public class GccCompiler : CompilerBase
             // For compilation, we compile to object files
             var success = await CompileToObjectFiles();
             
-            // If compilation succeeds and we have a linker, perform linking
-            if (success && Linker != null)
+            // If compilation succeeds, perform linking
+            if (success)
             {
-                success = await Linker.Link();
+                var linker = Linker ?? GetDefaultLinker();
+                await linker.Setup();
+                linker.SetModule(CurrentModule);
+                success = await linker.Link();
             }
 
             return success;
