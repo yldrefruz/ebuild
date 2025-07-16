@@ -63,7 +63,7 @@ public class GccCompiler : CompilerBase
     {
         if (type == "CompileCommandsJSON")
         {
-            return await GenerateCompileCommandsJson(false);
+            return await GenerateCompileCommandsJson((string?)data);
         }
         
         return false;
