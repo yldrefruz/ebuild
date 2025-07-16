@@ -178,8 +178,8 @@ public class GccCompiler : CompilerBase
         
         ArgumentBuilder args = new();
         
-        // Add standard flags
-        args += "-std=c++17"; // Default to C++17, could be made configurable
+        // Add standard flags based on module's CppStandard
+        args += CppStandardToArg(CurrentModule.CppStandard);
         args += "-Wall"; // Enable all warnings
         args += "-Wextra"; // Enable extra warnings
         
@@ -187,11 +187,11 @@ public class GccCompiler : CompilerBase
         if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
         {
             args += "-g"; // Debug symbols
-            args += "-O0"; // No optimization
+            args += OptimizationLevelToArg(OptimizationLevel.None); // No optimization in debug
         }
         else
         {
-            args += "-O2"; // Optimize for speed
+            args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
             args += "-DNDEBUG"; // No debug assertions
         }
         
@@ -258,6 +258,30 @@ public class GccCompiler : CompilerBase
         return fp;
     }
 
+    private static string CppStandardToArg(CppStandards standard)
+    {
+        return standard switch
+        {
+            CppStandards.Cpp14 => "-std=c++14",
+            CppStandards.Cpp17 => "-std=c++17",
+            CppStandards.Cpp20 => "-std=c++20",
+            CppStandards.CppLatest => "-std=c++2b", // Latest supported by GCC
+            _ => "-std=c++20" // Default to C++20
+        };
+    }
+
+    private static string OptimizationLevelToArg(OptimizationLevel level)
+    {
+        return level switch
+        {
+            OptimizationLevel.None => "-O0",
+            OptimizationLevel.Size => "-Os",
+            OptimizationLevel.Speed => "-O2",
+            OptimizationLevel.Max => "-O3",
+            _ => "-O2" // Default to speed optimization
+        };
+    }
+
     public override async Task<bool> Compile()
     {
         if (CurrentModule == null)
@@ -288,45 +312,34 @@ public class GccCompiler : CompilerBase
             var outputDir = GetBinaryOutputFolder();
             Directory.CreateDirectory(outputDir);
 
-            // Generate compile command using the new method
-            var baseCommand = GenerateCompileCommand(false);
-            var arguments = new List<string>();
+            // Generate compile command using GenerateCompileCommand(true) to include source files
+            var commandContent = GenerateCompileCommand(true);
             
-            // Parse base command and add to arguments
-            var commandParts = baseCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            arguments.AddRange(commandParts);
-            
-            // Add source files
-            arguments.AddRange(sourceFiles.Select(s => GetModuleFilePath(s, CurrentModule)));
-            
-            // Set output file based on module type
-            var outputFile = Path.Combine(outputDir, CurrentModule.Name ?? "output");
+            // Add module type specific flags
             switch (CurrentModule.Type)
             {
                 case ModuleType.Executable:
                 case ModuleType.ExecutableWin32:
-                    arguments.Add("-o");
-                    arguments.Add(outputFile);
+                    commandContent += $" -o \"{Path.Combine(outputDir, CurrentModule.Name ?? "output")}\"";
                     break;
                 case ModuleType.StaticLibrary:
-                    arguments.Add("-c"); // Compile only for static library
-                    arguments.Add("-o");
-                    arguments.Add(outputFile + ".a");
+                    commandContent += " -c"; // Compile only for static library
+                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".a")}\"";
                     break;
                 case ModuleType.SharedLibrary:
-                    arguments.Add("-shared");
-                    arguments.Add("-fPIC"); // Position independent code
-                    arguments.Add("-o");
-                    arguments.Add(outputFile + ".so");
+                    commandContent += " -shared -fPIC"; // Position independent code
+                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".so")}\"";
                     break;
             }
 
-            var argumentString = string.Join(" ", arguments);
-            
+            // Write command to a temporary file to avoid command length limits
+            var commandFilePath = Path.GetTempFileName();
+            await File.WriteAllTextAsync(commandFilePath, commandContent);
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = _gccPath,
-                Arguments = argumentString,
+                Arguments = $"@{commandFilePath}", // Use command file
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -334,7 +347,8 @@ public class GccCompiler : CompilerBase
                 WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
             };
 
-            Logger.LogInformation("Executing: {command} {arguments}", _gccPath, argumentString);
+            Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
+            Logger.LogDebug("Command file content: {content}", commandContent);
 
             var process = Process.Start(startInfo);
             if (process == null)
@@ -365,6 +379,19 @@ public class GccCompiler : CompilerBase
             process.BeginErrorReadLine();
             await process.WaitForExitAsync();
 
+            // Clean up command file
+            if (File.Exists(commandFilePath))
+            {
+                try
+                {
+                    File.Delete(commandFilePath);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+
             if (process.ExitCode != 0)
             {
                 Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
@@ -383,6 +410,9 @@ public class GccCompiler : CompilerBase
 
     private void ParseGccOutput(string output)
     {
+        if (string.IsNullOrWhiteSpace(output))
+            return;
+
         var match = GccMessageRegex.Match(output);
         if (match.Success)
         {
@@ -392,26 +422,45 @@ public class GccCompiler : CompilerBase
             var type = match.Groups["type"].Value;
             var message = match.Groups["message"].Value;
 
-            switch (type)
+            // Format the message with colors
+            var location = $"{file}:{line}:{column}";
+            
+            switch (type.ToLowerInvariant())
             {
                 case "error":
-                    Logger.LogError("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    Logger.LogError("\u001b[31m{location}: \u001b[1merror:\u001b[0m {message}", location, message);
                     break;
                 case "warning":
-                    Logger.LogWarning("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    Logger.LogWarning("\u001b[33m{location}: \u001b[1mwarning:\u001b[0m {message}", location, message);
                     break;
                 case "note":
-                    Logger.LogInformation("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    Logger.LogInformation("\u001b[36m{location}: \u001b[1mnote:\u001b[0m {message}", location, message);
                     break;
                 default:
-                    Logger.LogInformation("{output}", output);
+                    Logger.LogInformation("{location}: {type}: {message}", location, type, message);
                     break;
             }
         }
         else
         {
-            // If the regex doesn't match, log the raw output
-            Logger.LogInformation("{output}", output);
+            // Handle other types of output (e.g., linker messages, general info)
+            if (output.Contains("error:") || output.Contains("fatal error:"))
+            {
+                Logger.LogError("\u001b[31m{output}\u001b[0m", output);
+            }
+            else if (output.Contains("warning:"))
+            {
+                Logger.LogWarning("\u001b[33m{output}\u001b[0m", output);
+            }
+            else if (output.Contains("note:"))
+            {
+                Logger.LogInformation("\u001b[36m{output}\u001b[0m", output);
+            }
+            else
+            {
+                // General compiler output
+                Logger.LogInformation("{output}", output);
+            }
         }
     }
 

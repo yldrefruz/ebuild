@@ -60,6 +60,9 @@ public abstract class ModuleBase
     /// <summary>The cpp standard this module uses.</summary>
     public CppStandards CppStandard = CppStandards.Cpp20;
 
+    /// <summary>The optimization level for this module.</summary>
+    public OptimizationLevel OptimizationLevel = OptimizationLevel.Speed;
+
     /// <summary> The type of this module</summary>
     public ModuleType Type;
 
