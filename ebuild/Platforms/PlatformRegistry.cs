@@ -43,8 +43,7 @@ public class PlatformRegistry
             case PlatformID.WinCE:
                 return GetInstance().Get<Win32Platform>();
             case PlatformID.Unix:
-            //TODO: Unix Platform
-            //return GetInstance().Get<UnixPlatform>();
+                return GetInstance().Get<UnixPlatform>();
             case PlatformID.Xbox:
             //TODO: Xbox Platform
             //return GetInstance().Get<XboxPlatform>();

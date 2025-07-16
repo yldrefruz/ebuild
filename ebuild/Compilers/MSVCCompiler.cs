@@ -198,6 +198,18 @@ public class MsvcCompiler : CompilerBase
         return value;
     }
 
+    private static string OptimizationLevelToArg(OptimizationLevel level)
+    {
+        return level switch
+        {
+            OptimizationLevel.None => "/Od",
+            OptimizationLevel.Size => "/O1",
+            OptimizationLevel.Speed => "/O2", 
+            OptimizationLevel.Max => "/Ox",
+            _ => "/O2" // Default to speed optimization
+        };
+    }
+
     private void AddModuleCompileArguments(ModuleBase module, bool includeSourceFiles, ref ArgumentBuilder args,
         AccessLimit? accessLimit = null)
     {
@@ -228,10 +240,12 @@ public class MsvcCompiler : CompilerBase
             args += "/Zi";
             args += $"/Fd\"{Path.Join(GetObjectPdbFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
             args += "/FS";
+            args += OptimizationLevelToArg(OptimizationLevel.None); // No optimization in debug
         }
         else
         {
             args += "/MD";
+            args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
         }
         args += $"/Fo:";
         Directory.CreateDirectory(GetObjectOutputFolder());

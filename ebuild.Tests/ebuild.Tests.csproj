@@ -10,4 +10,9 @@
     <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../ebuild/ebuild.csproj" />
+    <ProjectReference Include="../ebuild.api/ebuild.api.csproj" />
+  </ItemGroup>
+
 </Project>
