@@ -2,8 +2,8 @@ using ebuild.api;
 
 namespace ebuild.Platforms;
 
-[Platform("Linux")]
-public class LinuxPlatform : PlatformBase
+[Platform("Unix")]
+public class UnixPlatform : PlatformBase
 {
     public override string? GetDefaultCompilerName()
     {

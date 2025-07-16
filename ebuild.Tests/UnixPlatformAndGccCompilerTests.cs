@@ -5,7 +5,7 @@ using ebuild.Compilers;
 namespace ebuild.Tests;
 
 [TestFixture]
-public class LinuxPlatformTests
+public class UnixPlatformTests
 {
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -22,33 +22,33 @@ public class LinuxPlatformTests
     }
 
     [Test]
-    public void LinuxPlatform_Should_Be_Registered()
+    public void UnixPlatform_Should_Be_Registered()
     {
         // Arrange
         var registry = PlatformRegistry.GetInstance();
         
         // Act & Assert
-        Assert.DoesNotThrow(() => registry.Get<LinuxPlatform>());
+        Assert.DoesNotThrow(() => registry.Get<UnixPlatform>());
     }
 
     [Test]
-    public void LinuxPlatform_Should_Have_Correct_Name()
+    public void UnixPlatform_Should_Have_Correct_Name()
     {
         // Arrange
-        var platform = new LinuxPlatform();
+        var platform = new UnixPlatform();
         
         // Act
         var name = platform.GetName();
         
         // Assert
-        Assert.That(name, Is.EqualTo("Linux"));
+        Assert.That(name, Is.EqualTo("Unix"));
     }
 
     [Test]
-    public void LinuxPlatform_Should_Return_Gcc_As_Default_Compiler()
+    public void UnixPlatform_Should_Return_Gcc_As_Default_Compiler()
     {
         // Arrange
-        var platform = new LinuxPlatform();
+        var platform = new UnixPlatform();
         
         // Act
         var compilerName = platform.GetDefaultCompilerName();
@@ -90,11 +90,11 @@ public class GccCompilerTests
     }
 
     [Test]
-    public void GccCompiler_Should_Be_Available_For_Linux_Platform()
+    public void GccCompiler_Should_Be_Available_For_Unix_Platform()
     {
         // Arrange
         var compiler = new GccCompiler();
-        var platform = new LinuxPlatform();
+        var platform = new UnixPlatform();
         
         // Act
         var isAvailable = compiler.IsAvailable(platform);

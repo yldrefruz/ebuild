@@ -14,8 +14,8 @@ public class GccCompiler : CompilerBase
 
     public override bool IsAvailable(PlatformBase platform)
     {
-        // Check if platform is Linux
-        if (platform.GetName() != "Linux")
+        // Check if platform is Unix
+        if (platform.GetName() != "Unix")
             return false;
             
         // Check if gcc is actually available on the system
