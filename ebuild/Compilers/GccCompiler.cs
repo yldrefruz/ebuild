@@ -1,5 +1,9 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using ebuild.api;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +13,10 @@ namespace ebuild.Compilers;
 public class GccCompiler : CompilerBase
 {
     private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("GCC Compiler");
+
+    // Regex for parsing GCC output messages
+    // Format: file.cpp:line:column: error/warning: message
+    private static readonly Regex GccMessageRegex = new(@"^(?<file>.*):(?<line>\d+):(?<column>\d+): (?<type>error|warning|note): (?<message>.*)$");
 
     private string _gccPath = string.Empty;
 
@@ -51,16 +59,61 @@ public class GccCompiler : CompilerBase
         throw new NotImplementedException();
     }
 
-    public override Task<bool> Generate(string type, object? data = null)
+    public override async Task<bool> Generate(string type, object? data = null)
     {
         if (type == "CompileCommandsJSON")
         {
-            // TODO: Implement compile commands JSON generation for GCC
-            Logger.LogWarning("CompileCommandsJSON generation is not yet implemented for GCC compiler");
-            return Task.FromResult(false);
+            return await GenerateCompileCommandsJson((string?)data);
         }
         
-        return Task.FromResult(false);
+        return false;
+    }
+
+    private async Task<bool> GenerateCompileCommandsJson(string? outFile)
+    {
+        if (CurrentModule == null)
+        {
+            Logger.LogError("No module set for CompileCommandsJSON generation");
+            return false;
+        }
+
+        var command = GenerateCompileCommand(false);
+        
+        // Add clang-specific flags for better IDE support
+        command += " -D__GNUC__ -D__GNUG__";
+        
+        // Set the output file path
+        var outputFile = outFile ?? "compile_commands.json";
+        var outputPath = Path.IsPathFullyQualified(outputFile) 
+            ? outputFile 
+            : Path.Combine(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", outputFile);
+        
+        try
+        {
+            var jsonEntries = CurrentModule.SourceFiles.Select(source => new JsonObject
+            {
+                { "directory", CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory() },
+                { "command", $"{_gccPath} {command} -c \"{GetModuleFilePath(source, CurrentModule)}\"" },
+                { "file", GetModuleFilePath(source, CurrentModule) }
+            });
+            
+            var jsonSerializerOptions = new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = true
+            };
+            
+            var serialized = JsonSerializer.Serialize(jsonEntries, jsonSerializerOptions);
+            await File.WriteAllTextAsync(outputPath, serialized);
+            
+            Logger.LogInformation("Generated compile_commands.json at: {outputPath}", outputPath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Failed to generate compile_commands.json: {message}", ex.Message);
+            return false;
+        }
     }
 
     public override async Task<bool> Setup()
@@ -119,6 +172,92 @@ public class GccCompiler : CompilerBase
         return false;
     }
 
+    private string GenerateCompileCommand(bool includeSourceFiles)
+    {
+        if (CurrentModule == null) throw new NullReferenceException("CurrentModule is null");
+        
+        ArgumentBuilder args = new();
+        
+        // Add standard flags
+        args += "-std=c++17"; // Default to C++17, could be made configurable
+        args += "-Wall"; // Enable all warnings
+        args += "-Wextra"; // Enable extra warnings
+        
+        // Add debug or release flags based on configuration
+        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
+        {
+            args += "-g"; // Debug symbols
+            args += "-O0"; // No optimization
+        }
+        else
+        {
+            args += "-O2"; // Optimize for speed
+            args += "-DNDEBUG"; // No debug assertions
+        }
+        
+        // Add include directories
+        foreach (var include in CurrentModule.Includes.Joined())
+        {
+            args += $"-I{GetModuleFilePath(include, CurrentModule)}";
+        }
+        
+        // Add definitions
+        foreach (var definition in CurrentModule.Definitions.Joined())
+        {
+            args += $"-D{definition}";
+        }
+        
+        // Add force includes
+        foreach (var forceInclude in CurrentModule.ForceIncludes.Joined())
+        {
+            args += $"-include";
+            args += GetModuleFilePath(forceInclude, CurrentModule);
+        }
+        
+        // Add building definition for current module
+        if (includeSourceFiles)
+        {
+            args += $"-D{(CurrentModule.Name ?? CurrentModule.Context.ModuleDirectory!.Name).ToUpperInvariant()}_BUILDING";
+        }
+        
+        // Add additional compiler options
+        args += AdditionalCompilerOptions;
+        
+        // Add source files if requested
+        if (includeSourceFiles)
+        {
+            args += CurrentModule.SourceFiles.Select(s => GetModuleFilePath(s, CurrentModule));
+        }
+        
+        // Add dependency includes and definitions
+        var binaryDir = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
+        
+        var currentModuleFile = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName);
+        var dependencyTree = currentModuleFile.GetDependencyTree();
+        foreach (var moduleChild in dependencyTree.GetFirstLevelAndPublicDependencies())
+        {
+            var childModule = moduleChild.GetCompiledModule()!;
+            args += childModule.Definitions.Public.Select(definition => $"-D{definition}");
+            args += childModule.Includes.Public.Select(include => $"-I{GetModuleFilePath(include, childModule)}");
+            args += childModule.ForceIncludes.Public.Select(forceInclude => 
+            {
+                var result = new List<string> { "-include", GetModuleFilePath(forceInclude, childModule) };
+                return result;
+            }).SelectMany(x => x);
+        }
+        
+        Directory.SetCurrentDirectory(binaryDir);
+        
+        return args.ToString();
+    }
+
+    private static string GetModuleFilePath(string path, ModuleBase module)
+    {
+        var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
+        return fp;
+    }
+
     public override async Task<bool> Compile()
     {
         if (CurrentModule == null)
@@ -137,7 +276,7 @@ public class GccCompiler : CompilerBase
 
         try
         {
-            // Basic compilation logic
+            // Check if we have source files to compile
             var sourceFiles = CurrentModule.SourceFiles;
             if (sourceFiles.Count == 0)
             {
@@ -149,28 +288,18 @@ public class GccCompiler : CompilerBase
             var outputDir = GetBinaryOutputFolder();
             Directory.CreateDirectory(outputDir);
 
-            // Basic gcc compilation command
+            // Generate compile command using the new method
+            var baseCommand = GenerateCompileCommand(false);
             var arguments = new List<string>();
             
+            // Parse base command and add to arguments
+            var commandParts = baseCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            arguments.AddRange(commandParts);
+            
             // Add source files
-            arguments.AddRange(sourceFiles);
+            arguments.AddRange(sourceFiles.Select(s => GetModuleFilePath(s, CurrentModule)));
             
-            // Add include directories
-            foreach (var include in CurrentModule.Includes.Joined())
-            {
-                arguments.Add($"-I{include}");
-            }
-            
-            // Add definitions
-            foreach (var definition in CurrentModule.Definitions.Joined())
-            {
-                arguments.Add($"-D{definition}");
-            }
-            
-            // Add additional compiler options
-            arguments.AddRange(AdditionalCompilerOptions);
-            
-            // Set output file
+            // Set output file based on module type
             var outputFile = Path.Combine(outputDir, CurrentModule.Name ?? "output");
             switch (CurrentModule.Type)
             {
@@ -180,12 +309,13 @@ public class GccCompiler : CompilerBase
                     arguments.Add(outputFile);
                     break;
                 case ModuleType.StaticLibrary:
-                    arguments.Add("-c"); // Compile only
+                    arguments.Add("-c"); // Compile only for static library
                     arguments.Add("-o");
                     arguments.Add(outputFile + ".a");
                     break;
                 case ModuleType.SharedLibrary:
                     arguments.Add("-shared");
+                    arguments.Add("-fPIC"); // Position independent code
                     arguments.Add("-o");
                     arguments.Add(outputFile + ".so");
                     break;
@@ -213,19 +343,27 @@ public class GccCompiler : CompilerBase
                 return false;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var error = await process.StandardError.ReadToEndAsync();
+            // Set up async reading of output and error streams
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    ParseGccOutput(args.Data);
+                }
+            };
+
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    ParseGccOutput(args.Data);
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
             await process.WaitForExitAsync();
-
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                Logger.LogInformation("GCC Output: {output}", output);
-            }
-
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                Logger.LogError("GCC Error: {error}", error);
-            }
 
             if (process.ExitCode != 0)
             {
@@ -240,6 +378,40 @@ public class GccCompiler : CompilerBase
         {
             Logger.LogError("Compilation failed with exception: {message}", ex.Message);
             return false;
+        }
+    }
+
+    private void ParseGccOutput(string output)
+    {
+        var match = GccMessageRegex.Match(output);
+        if (match.Success)
+        {
+            var file = match.Groups["file"].Value;
+            var line = match.Groups["line"].Value;
+            var column = match.Groups["column"].Value;
+            var type = match.Groups["type"].Value;
+            var message = match.Groups["message"].Value;
+
+            switch (type)
+            {
+                case "error":
+                    Logger.LogError("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    break;
+                case "warning":
+                    Logger.LogWarning("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    break;
+                case "note":
+                    Logger.LogInformation("{file}:{line}:{column}: {type}: {message}", file, line, column, type, message);
+                    break;
+                default:
+                    Logger.LogInformation("{output}", output);
+                    break;
+            }
+        }
+        else
+        {
+            // If the regex doesn't match, log the raw output
+            Logger.LogInformation("{output}", output);
         }
     }
 
