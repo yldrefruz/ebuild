@@ -15,6 +15,11 @@ public abstract class CompilerBase
     /// </summary>
     protected ModuleBase? CurrentModule;
 
+    /// <summary>
+    /// The linker to use for linking operations (optional)
+    /// </summary>
+    protected LinkerBase? Linker;
+
     public readonly List<string> AdditionalCompilerOptions = new();
     public readonly List<string> AdditionalLinkerOptions = new();
 
@@ -59,6 +64,18 @@ public abstract class CompilerBase
     public void SetModule(ModuleBase module)
     {
         CurrentModule = module;
+        Linker?.SetModule(module);
+    }
+
+    public void SetLinker(LinkerBase linker)
+    {
+        Linker = linker;
+        if (CurrentModule != null)
+        {
+            Linker.SetModule(CurrentModule);
+        }
+        // Copy additional linker options to the linker
+        Linker.AdditionalLinkerOptions.AddRange(AdditionalLinkerOptions);
     }
 
     public string GetName()

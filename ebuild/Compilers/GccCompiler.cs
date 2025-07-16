@@ -312,100 +312,122 @@ public class GccCompiler : CompilerBase
             var outputDir = GetBinaryOutputFolder();
             Directory.CreateDirectory(outputDir);
 
-            // Generate compile command using GenerateCompileCommand(true) to include source files
-            var commandContent = GenerateCompileCommand(true);
+            // For compilation, we compile to object files
+            var success = await CompileToObjectFiles();
             
-            // Add module type specific flags
-            switch (CurrentModule.Type)
+            // If compilation succeeds and we have a linker, perform linking
+            if (success && Linker != null)
             {
-                case ModuleType.Executable:
-                case ModuleType.ExecutableWin32:
-                    commandContent += $" -o \"{Path.Combine(outputDir, CurrentModule.Name ?? "output")}\"";
-                    break;
-                case ModuleType.StaticLibrary:
-                    commandContent += " -c"; // Compile only for static library
-                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".a")}\"";
-                    break;
-                case ModuleType.SharedLibrary:
-                    commandContent += " -shared -fPIC"; // Position independent code
-                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".so")}\"";
-                    break;
+                success = await Linker.Link();
             }
 
-            // Write command to a temporary file to avoid command length limits
-            var commandFilePath = Path.GetTempFileName();
-            await File.WriteAllTextAsync(commandFilePath, commandContent);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = _gccPath,
-                Arguments = $"@{commandFilePath}", // Use command file
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
-            };
-
-            Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
-            Logger.LogDebug("Command file content: {content}", commandContent);
-
-            var process = Process.Start(startInfo);
-            if (process == null)
-            {
-                Logger.LogError("Failed to start GCC process");
-                return false;
-            }
-
-            // Set up async reading of output and error streams
-            process.OutputDataReceived += (_, args) =>
-            {
-                if (args.Data != null)
-                {
-                    ParseGccOutput(args.Data);
-                }
-            };
-
-            process.ErrorDataReceived += (_, args) =>
-            {
-                if (args.Data != null)
-                {
-                    ParseGccOutput(args.Data);
-                }
-            };
-
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync();
-
-            // Clean up command file
-            if (File.Exists(commandFilePath))
-            {
-                try
-                {
-                    File.Delete(commandFilePath);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
-
-            if (process.ExitCode != 0)
-            {
-                Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
-                return false;
-            }
-
-            Logger.LogInformation("Compilation successful");
-            return true;
+            return success;
         }
         catch (Exception ex)
         {
             Logger.LogError("Compilation failed with exception: {message}", ex.Message);
             return false;
         }
+    }
+
+    private async Task<bool> CompileToObjectFiles()
+    {
+        if (CurrentModule == null)
+            return false;
+
+        var sourceFiles = CurrentModule.SourceFiles;
+        var outputDir = GetObjectOutputFolder();
+        Directory.CreateDirectory(outputDir);
+
+        // Generate compile command for object files
+        var commandContent = GenerateCompileCommand(true);
+        commandContent += " -c"; // Compile only, don't link
+
+        // Add object output directory
+        commandContent += $" -o {outputDir}";
+
+        // Write command to a temporary file to avoid command length limits
+        var commandFilePath = Path.GetTempFileName();
+        await File.WriteAllTextAsync(commandFilePath, commandContent);
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = _gccPath,
+            Arguments = $"@{commandFilePath}", // Use command file
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
+        };
+
+        Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
+        Logger.LogDebug("Command file content: {content}", commandContent);
+
+        var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            Logger.LogError("Failed to start GCC process");
+            return false;
+        }
+
+        // Set up async reading of output and error streams
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (args.Data != null)
+            {
+                ParseGccOutput(args.Data);
+            }
+        };
+
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (args.Data != null)
+            {
+                ParseGccOutput(args.Data);
+            }
+        };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        await process.WaitForExitAsync();
+
+        // Clean up command file
+        if (File.Exists(commandFilePath))
+        {
+            try
+            {
+                File.Delete(commandFilePath);
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+        }
+
+        if (process.ExitCode != 0)
+        {
+            Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
+            return false;
+        }
+
+        Logger.LogInformation("Compilation successful");
+        return true;
+    }
+
+    private string GetObjectOutputFolder()
+    {
+        if (CurrentModule == null)
+            throw new NullReferenceException("CurrentModule is null.");
+        
+        if (CurrentModule.UseVariants)
+            return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
+                ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", 
+                CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
+        
+        return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
+            ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
     }
 
     private void ParseGccOutput(string output)
