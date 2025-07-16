@@ -1,4 +1,5 @@
 ﻿using ebuild.api;
+using ebuild.Linkers;
 using ebuild.Platforms;
 
 namespace ebuild.Compilers;
@@ -36,6 +37,11 @@ public class NullCompiler : CompilerBase
         _compiler = new NullCompiler();
         _compiler.SetModule(module);
         return _compiler;
+    }
+
+    public override LinkerBase GetDefaultLinker()
+    {
+        return LinkerRegistry.GetInstance().Get<NullLinker>();
     }
 
     public override bool IsAvailable(PlatformBase platform)

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.Linkers;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
@@ -19,6 +20,11 @@ public class GccCompiler : CompilerBase
     private static readonly Regex GccMessageRegex = new(@"^(?<file>.*):(?<line>\d+):(?<column>\d+): (?<type>error|warning|note): (?<message>.*)$");
 
     private string _gccPath = string.Empty;
+
+    public override LinkerBase GetDefaultLinker()
+    {
+        return LinkerRegistry.GetInstance().Get<GccLinker>();
+    }
 
     public override bool IsAvailable(PlatformBase platform)
     {

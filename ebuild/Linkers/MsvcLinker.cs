@@ -26,61 +26,17 @@ public class MsvcLinker : LinkerBase
 
     private static string GetVsWhereDirectory()
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Join(localAppData, "ebuild", "linkers", "msvc", "vswhere");
+        return MSVCUtils.GetVsWhereDirectory("linkers");
     }
 
     private bool VswhereExists()
     {
-        var vsWhereHash = "C54F3B7C9164EA9A0DB8641E81ECDDA80C2664EF5A47C4191406F848CC07C662";
-        var vsWhereExec = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
-        if (!File.Exists(vsWhereExec))
-            return false;
-        using var shaHasher = SHA256.Create();
-        using var fs = File.Open(vsWhereExec, FileMode.Open);
-        var hash = shaHasher.ComputeHash(fs);
-        var stringBuilder = new StringBuilder();
-
-        foreach (var b in hash)
-            stringBuilder.AppendFormat("{0:X2}", b);
-        var hashString = stringBuilder.ToString();
-        return hashString == vsWhereHash;
+        return MSVCUtils.VswhereExists("linkers");
     }
-
-    private const string VsWhereUrl = "https://github.com/microsoft/vswhere/releases/download/3.1.7/vswhere.exe";
 
     bool DownloadVsWhere()
     {
-        HttpClient client = new HttpClient();
-        byte[] vswhereBytes;
-        try
-        {
-            var job = client.GetByteArrayAsync(VsWhereUrl);
-            job.Wait();
-            if (!job.IsCompletedSuccessfully)
-                return false;
-            vswhereBytes = job.Result;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-
-        var pathSegments = VsWhereUrl.Split("/");
-        var version = pathSegments[pathSegments.Length - 1 - 1];
-        var vswhereDirectory = GetVsWhereDirectory();
-        Directory.CreateDirectory(vswhereDirectory);
-        var versionFile = File.Create(Path.Join(vswhereDirectory, "VERSION"));
-        TextWriter writer = new StreamWriter(versionFile, Encoding.UTF8);
-        writer.Write(version);
-        writer.Close();
-        writer.Dispose();
-        versionFile.Close();
-        var vswhereFile = File.Create(Path.Join(vswhereDirectory, "vswhere.exe"));
-        vswhereFile.Write(vswhereBytes);
-        vswhereFile.Close();
-        vswhereFile.Dispose();
-        return true;
+        return MSVCUtils.DownloadVsWhere("linkers");
     }
 
     public override bool IsAvailable(PlatformBase platform)
@@ -95,7 +51,7 @@ public class MsvcLinker : LinkerBase
             if (!DownloadVsWhere())
             {
                 throw new Exception(
-                    $"Can't download vswhere from {VsWhereUrl}. Please check your internet connection.");
+                    $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
             }
         }
 
@@ -447,22 +403,19 @@ public class MsvcLinker : LinkerBase
     {
         if (CurrentModule == null)
             throw new NullReferenceException("CurrentModule is null.");
-        if (CurrentModule.UseVariants)
-            return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
-        return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
+        return LinkerUtils.GetObjectOutputFolder(CurrentModule);
     }
 
     private string GetBinaryOutputFolder()
     {
         if (CurrentModule == null)
             throw new NullReferenceException("CurrentModule is null.");
-        return CurrentModule.GetBinaryOutputDirectory();
+        return LinkerUtils.GetBinaryOutputFolder(CurrentModule);
     }
 
     private static string GetModuleFilePath(string path, ModuleBase module)
     {
-        var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
-        return fp;
+        return LinkerUtils.GetModuleFilePath(path, module);
     }
 
     public override string GetExecutablePath()

@@ -16,7 +16,7 @@ public abstract class CompilerBase
     protected ModuleBase? CurrentModule;
 
     /// <summary>
-    /// The linker to use for linking operations (optional)
+    /// The linker to use for linking operations
     /// </summary>
     protected LinkerBase? Linker;
 
@@ -25,6 +25,11 @@ public abstract class CompilerBase
 
     public bool CleanCompilation = false;
     public int? ProcessCount = null;
+
+    /// <summary>
+    /// Gets the default linker for this compiler type
+    /// </summary>
+    public abstract LinkerBase GetDefaultLinker();
 
     /// <summary>
     /// Checks if the compiler can be run in this state. 

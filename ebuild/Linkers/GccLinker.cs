@@ -200,7 +200,19 @@ public class GccLinker : LinkerBase
         // Add library search paths
         foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
         {
-            args += $"-L{GetModuleFilePath(libPath, CurrentModule)}";
+            args += $"-L{LinkerUtils.GetModuleFilePath(libPath, CurrentModule)}";
+        }
+        
+        // Add dependency library search paths
+        var currentModuleFile = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName);
+        var dependencyTree = currentModuleFile.GetDependencyTree();
+        foreach (var dependency in dependencyTree.GetFirstLevelAndPublicDependencies())
+        {
+            var compModule = dependency.GetCompiledModule()!;
+            foreach (var libPath in compModule.LibrarySearchPaths.Public)
+            {
+                args += $"-L{LinkerUtils.GetModuleFilePath(libPath, compModule)}";
+            }
         }
 
         // Add libraries
@@ -213,6 +225,37 @@ public class GccLinker : LinkerBase
             else
             {
                 args += $"-l{library}";
+            }
+        }
+        
+        // Add dependency libraries
+        foreach (var dependency in dependencyTree.GetFirstLevelAndPublicDependencies())
+        {
+            var compModule = dependency.GetCompiledModule()!;
+            
+            // Add dependency's output library
+            switch (compModule.Type)
+            {
+                case ModuleType.SharedLibrary:
+                    args += Path.Combine(compModule.GetBinaryOutputDirectory(), $"lib{compModule.Name}.so");
+                    break;
+                case ModuleType.StaticLibrary:
+                    args += Path.Combine(compModule.GetBinaryOutputDirectory(), $"lib{compModule.Name}.a");
+                    break;
+            }
+            
+            // Add dependency's libraries
+            foreach (var library in compModule.Libraries.Public)
+            {
+                var libPath = LinkerUtils.GetModuleFilePath(library, compModule);
+                if (File.Exists(libPath))
+                {
+                    args += libPath;
+                }
+                else
+                {
+                    args += $"-l{library}";
+                }
             }
         }
 
@@ -246,7 +289,7 @@ public class GccLinker : LinkerBase
         ArgumentBuilder args = new();
         args += "ar";
         args += "rcs";
-        args += Path.Combine(GetBinaryOutputFolder(), (CurrentModule.Name ?? "output") + ".a");
+        args += Path.Combine(LinkerUtils.GetBinaryOutputFolder(CurrentModule), (CurrentModule.Name ?? "output") + ".a");
         args += objectFiles;
 
         return args.ToString();
@@ -257,14 +300,7 @@ public class GccLinker : LinkerBase
         if (CurrentModule == null)
             throw new NullReferenceException("CurrentModule is null.");
         
-        // This should match the object output folder used by the compiler
-        if (CurrentModule.UseVariants)
-            return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
-                ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", 
-                CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
-        
-        return Path.Join(CurrentModule.Context.ModuleDirectory!.FullName, ".ebuild", 
-            ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
+        return LinkerUtils.GetObjectOutputFolder(CurrentModule);
     }
 
     private string GetBinaryOutputFolder()
@@ -272,13 +308,12 @@ public class GccLinker : LinkerBase
         if (CurrentModule == null)
             throw new NullReferenceException("CurrentModule is null.");
         
-        return CurrentModule.GetBinaryOutputDirectory();
+        return LinkerUtils.GetBinaryOutputFolder(CurrentModule);
     }
 
     private static string GetModuleFilePath(string path, ModuleBase module)
     {
-        var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
-        return fp;
+        return LinkerUtils.GetModuleFilePath(path, module);
     }
 
     public override string GetExecutablePath()
