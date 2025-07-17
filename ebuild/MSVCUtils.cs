@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -12,6 +13,31 @@ public static class MSVCUtils
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return Path.Join(localAppData, "ebuild", "msvc", "vswhere");
+    }
+
+    public static async Task<string> GetMsvcToolRoot(string requirement = "Microsoft.VisualStudio.Component.VC.Tools.*")
+    {
+        var toolRoot = Config.Get().MsvcPath ?? string.Empty;
+        if (string.IsNullOrEmpty(toolRoot))
+        {
+            var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
+            var args = $"-latest -products * -requires {requirement} -property installationPath";
+            var vsWhereProcess = new Process();
+            var processStartInfo = new ProcessStartInfo
+            {
+                Arguments = args,
+                FileName = vsWhereExecutable,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                CreateNoWindow = true
+            };
+            vsWhereProcess.StartInfo = processStartInfo;
+            vsWhereProcess.Start();
+            toolRoot = await vsWhereProcess.StandardOutput.ReadToEndAsync();
+            await vsWhereProcess.WaitForExitAsync();
+        }
+
+        return toolRoot.Trim();
     }
 
     public static bool VswhereExists()

@@ -224,28 +224,7 @@ public class MsvcCompiler : CompilerBase
             }
         }
 
-        var toolRoot = Config.Get().MsvcPath ?? string.Empty;
-        if (string.IsNullOrEmpty(toolRoot))
-        {
-            var vsWhereExecutable = Path.Join(MSVCUtils.GetVsWhereDirectory(), "vswhere.exe");
-            const string args =
-                "-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.* -property installationPath";
-            var vsWhereProcess = new Process();
-            var processStartInfo = new ProcessStartInfo
-            {
-                Arguments = args,
-                FileName = vsWhereExecutable,
-                RedirectStandardOutput = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            vsWhereProcess.StartInfo = processStartInfo;
-            vsWhereProcess.Start();
-            toolRoot = await vsWhereProcess.StandardOutput.ReadToEndAsync();
-            await vsWhereProcess.WaitForExitAsync();
-        }
-
-        toolRoot = toolRoot.Trim();
+        var toolRoot = await MSVCUtils.GetMsvcToolRoot();
 
         if(string.IsNullOrEmpty(toolRoot)){
             Logger.LogInformation("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
@@ -420,7 +399,10 @@ public class MsvcCompiler : CompilerBase
 
     private void ClearObjectAndPdbFiles(bool shouldLog = true)
     {
-        CompilerUtils.ClearObjectAndPdbFiles(CurrentModule, shouldLog);
+        if (CurrentModule != null)
+        {
+            CompilerUtils.ClearObjectAndPdbFiles(CurrentModule, shouldLog);
+        }
     }
 
     private void ProcessAdditionalDependencies()

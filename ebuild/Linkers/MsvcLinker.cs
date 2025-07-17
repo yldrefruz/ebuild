@@ -40,28 +40,7 @@ public class MsvcLinker : LinkerBase
             }
         }
 
-        var toolRoot = Config.Get().MsvcPath ?? string.Empty;
-        if (string.IsNullOrEmpty(toolRoot))
-        {
-            var vsWhereExecutable = Path.Join(MSVCUtils.GetVsWhereDirectory(), "vswhere.exe");
-            const string args =
-                "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
-            var vsWhereProcess = new Process();
-            var processStartInfo = new ProcessStartInfo
-            {
-                Arguments = args,
-                FileName = vsWhereExecutable,
-                RedirectStandardOutput = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            vsWhereProcess.StartInfo = processStartInfo;
-            vsWhereProcess.Start();
-            toolRoot = await vsWhereProcess.StandardOutput.ReadToEndAsync();
-            await vsWhereProcess.WaitForExitAsync();
-        }
-
-        toolRoot = toolRoot.Trim();
+        var toolRoot = await MSVCUtils.GetMsvcToolRoot("Microsoft.VisualStudio.Component.VC.CoreBuildTools");
 
         var version = Config.Get().MsvcVersion ?? string.Empty;
         version = version.Trim();
