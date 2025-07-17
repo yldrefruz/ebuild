@@ -319,6 +319,8 @@ public class MsvcCompiler : CompilerBase
         var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
         Directory.CreateDirectory(outputDir);
 
+        var errorFiles = new List<string>();
+
         // Compile each source file individually
         foreach (var sourceFile in sourceFiles)
         {
@@ -411,15 +413,21 @@ public class MsvcCompiler : CompilerBase
             if (proc.ExitCode != 0)
             {
                 Logger.LogError("Compilation Failed for {sourceFile}, {exitCode}", sourceFile, proc.ExitCode);
-                if (CleanCompilation)
-                {
-                    ClearObjectAndPdbFiles();
-                }
-                return false;
+                errorFiles.Add(sourceFile);
+
             }
         }
-
-        Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
+        if (errorFiles.Count > 0)
+        {
+            Logger.LogError("Compilation failed for the following files: {files}", string.Join(", ", errorFiles));
+            if (CleanCompilation)
+            {
+                ClearObjectAndPdbFiles();
+            }
+            Environment.ExitCode = 1;
+            return false;
+        }
+        // Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
 
         // Use the linker if available, otherwise use default linker
         bool linkingSuccess = true;
@@ -452,235 +460,6 @@ public class MsvcCompiler : CompilerBase
             additionalDependency.Process(CurrentModule);
         }
     }
-
-    private async Task CallLinkExe()
-    {
-        if (CurrentModule == null)
-            return;
-        Logger.LogInformation("Linking program");
-        ArgumentBuilder argumentBuilder = new();
-        var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
-        var files = Directory.GetFiles(CompilerUtils.GetObjectOutputFolder(CurrentModule), "*.obj", SearchOption.TopDirectoryOnly);
-        files = [.. files.Select(f => GetModuleFilePath(f, CurrentModule))];
-        // ReSharper disable once StringLiteralTypo
-        argumentBuilder += "/nologo";
-        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
-        {
-            argumentBuilder += "/DEBUG";
-            // example: /PDB:"C:\Users\user\module_1\Binaries\<variant_id>\module_1.pdb"
-            argumentBuilder += $"/PDB:{Path.Join(GetBinaryOutputFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb";
-        }
-
-        argumentBuilder += AdditionalLinkerOptions;
-
-        var outType = ".exe";
-        switch (CurrentModule.Type)
-        {
-            case ModuleType.ExecutableWin32:
-                argumentBuilder += "/SUBSYSTEM:WINDOWS";
-                break;
-            case ModuleType.Executable:
-                argumentBuilder += "/SUBSYSTEM:CONSOLE";
-                break;
-            case ModuleType.SharedLibrary:
-                argumentBuilder += "/DLL";
-                outType = ".dll";
-                break;
-            case ModuleType.StaticLibrary:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
-        // Make sure the output directory exists.
-        Directory.CreateDirectory(GetBinaryOutputFolder());
-        argumentBuilder +=
-            $"/OUT:\"{Path.Join(GetBinaryOutputFolder(),
-               (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\"";
-
-        // Add the library search paths for current module and the dependencies.
-        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined()
-            .Select(current => $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
-        var depTree = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName).GetDependencyTree();
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            argumentBuilder +=
-                dependency.GetCompiledModule()!.LibrarySearchPaths.Public.Select(current =>
-                    $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
-        }
-        // Add the output files for current module.
-        argumentBuilder += files;
-
-        // Add the output file of the dependencies.
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            var compModule = dependency.GetCompiledModule()!;
-            switch (compModule.Type)
-            {
-                case ModuleType.Executable:
-                case ModuleType.ExecutableWin32:
-                    // No need to add the executable files. And they shouldn't even be referenced.
-                    throw new NotImplementedException("Executable modules are not supported as dependencies.");
-                case ModuleType.SharedLibrary:
-                    File.Copy(Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.dll"), Path.Combine(GetBinaryOutputFolder(), $"{CurrentModule.Name}.dll"), true); // copy the dll to the output directory.
-                    argumentBuilder += Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.lib"); // link the library
-                    break;
-                case ModuleType.StaticLibrary:
-                    argumentBuilder += Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.lib"); // link the library
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        // Add the libraries for current module and the dependencies.
-        argumentBuilder += CurrentModule.Libraries.Joined()
-            .Select((a) => File.Exists(Path.GetFullPath(a)) ? Path.GetFullPath(a) : a);
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            argumentBuilder += dependency.GetCompiledModule()!.Libraries.Public
-                .Select((a) =>
-                {
-                    var shorterPath = GetModuleFilePath(a, dependency.GetCompiledModule()!);
-                    return File.Exists(shorterPath) ? shorterPath : a;
-                });
-        }
-
-        var tempFile = Path.GetTempFileName();
-        var argumentString = argumentBuilder.ToString();
-        await using (var commandFile = File.OpenWrite(tempFile))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(argumentString);
-        }
-
-        using (Logger.BeginScope("Link"))
-        {
-            Logger.LogInformation("Launching link.exe with command file content {commandFileContent}", argumentString);
-            var p = new ProcessStartInfo()
-            {
-                Arguments = $"@\"{tempFile}\"",
-                FileName = linkExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = CurrentModule.Context.ModuleDirectory!.FullName,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            var process = new Process();
-            process.StartInfo = p;
-            process.OutputDataReceived += (_, args) =>
-            {
-                //TODO: change the parsing method. Maybe regex.
-                if (args.Data == null) return;
-                var splitData = args.Data.Split(":");
-                if (splitData.Length <= 2) return;
-                var errorWords = new[] { "error", "fatal error" };
-                var warningWords = new[] { "warning" };
-                if (errorWords.Any(word => splitData[1].Trim().StartsWith(word)))
-                {
-                    Logger.LogError("{data}", args.Data);
-                    return;
-                }
-
-                if (warningWords.Any(word => splitData[1].Trim().StartsWith(word)))
-                {
-                    Logger.LogWarning("{data}", args.Data);
-                    return;
-                }
-
-                Logger.LogInformation("{data}", args.Data);
-            };
-            process.ErrorDataReceived += (_, args) =>
-            {
-                if (args.Data != null) Logger.LogError("{data}", args.Data);
-            };
-            process.Start();
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                Logger.LogError("link failed, exit code: {exitCode}", process.ExitCode);
-                Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
-                return;
-            }
-
-            Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
-        }
-    }
-
-    private async Task CallLibExe()
-    {
-        if (CurrentModule == null)
-            return;
-        var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
-        var files = Directory.GetFiles(CompilerUtils.GetObjectOutputFolder(CurrentModule), "*.obj", SearchOption.TopDirectoryOnly);
-        //TODO: add files from the dependencies.
-        Directory.CreateDirectory(Path.Join(GetBinaryOutputFolder(), "lib"));
-        // ReSharper disable once StringLiteralTypo
-        ArgumentBuilder argumentBuilder = new();
-        argumentBuilder += "/nologo";
-        if (CurrentModule.Type == ModuleType.SharedLibrary)
-        {
-            argumentBuilder += "/DLL";
-        }
-
-        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
-        {
-            argumentBuilder += "/DEBUG";
-            argumentBuilder += $"/PDB:\"{Path.Join(GetBinaryOutputFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
-        }
-
-        argumentBuilder +=
-            $"/OUT:\"{Path.Join(GetBinaryOutputFolder(), "lib", (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\"";
-        argumentBuilder += AdditionalLinkerOptions;
-        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined().Select(s => $"/LIBPATH:\"{s}\"");
-        argumentBuilder += files.Select(f => GetModuleFilePath(f, CurrentModule));
-        argumentBuilder += CurrentModule.Libraries.Joined()
-            .Select(s => File.Exists(Path.GetFullPath(s)) ? Path.GetFullPath(s) : s);
-
-        var tempFile = Path.GetTempFileName();
-        var argumentContents = argumentBuilder.ToString();
-        await using (var commandFile = File.OpenWrite(tempFile))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(argumentContents);
-        }
-
-        using (Logger.BeginScope("Lib"))
-        {
-            Logger.LogDebug("Launching lib.exe with command file content {libCommandFileContent}",
-                argumentContents);
-            var p = new ProcessStartInfo()
-            {
-                Arguments = $"@\"{tempFile}\"",
-                FileName = libExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = CurrentModule.Context.ModuleDirectory!.FullName,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            var process = new Process();
-            process.StartInfo = p;
-            process.OutputDataReceived += (_, args) => Logger.LogInformation("{data}", args.Data);
-            process.Start();
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                Logger.LogError("LIB.exe failed, exit code: {exitCode}", process.ExitCode);
-                Environment.ExitCode = -1;
-                return;
-            }
-        }
-    }
-
 
     public override async Task<bool> Generate(string what, Object? data = null)
     {
