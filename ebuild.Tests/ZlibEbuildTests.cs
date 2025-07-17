@@ -2,6 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using ebuild.api;
 using ebuild.Platforms;
@@ -78,12 +79,28 @@ public class ZlibEbuildTests
         Console.WriteLine($"Standard Output: {output}");
         Console.WriteLine($"Standard Error: {error}");
         
-        // The build should not result in a stack overflow or other critical error
-        Assert.That(error, Does.Not.Contain("StackOverflowException"), "Should not have stack overflow");
-        Assert.That(error, Does.Not.Contain("stack overflow"), "Should not have stack overflow");
-        
         // The process should exit cleanly (exit code 0 indicates success)
         Assert.That(process.ExitCode, Is.EqualTo(0), $"Build should succeed. Exit code: {process.ExitCode}, Error: {error}");
+        
+        // Check that the correct artifacts were created
+        var buildDir = Path.Combine(workingDirectory, ".ebuild", "zlib", "build");
+        Assert.That(Directory.Exists(buildDir), Is.True, "Build directory should exist");
+        
+        // Check for object files (compiled source files)
+        var objectFiles = Directory.GetFiles(buildDir, "*.obj", SearchOption.AllDirectories);
+        Assert.That(objectFiles, Is.Not.Empty, "Should have compiled object files");
+        
+        // Check for static library file
+        var staticLibFiles = Directory.GetFiles(buildDir, "*.lib", SearchOption.AllDirectories);
+        Assert.That(staticLibFiles, Is.Not.Empty, "Should have created static library file");
+        
+        // Verify some expected object files exist (from known zlib source files)
+        var expectedObjectFiles = new[] { "adler32.obj", "compress.obj", "crc32.obj", "deflate.obj", "inflate.obj" };
+        foreach (var expectedFile in expectedObjectFiles)
+        {
+            var found = objectFiles.Any(f => Path.GetFileName(f) == expectedFile);
+            Assert.That(found, Is.True, $"Expected object file {expectedFile} should exist");
+        }
     }
 
     [TearDown]

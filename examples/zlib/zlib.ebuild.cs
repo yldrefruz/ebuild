@@ -14,7 +14,7 @@ public class ZlibEbuild : ModuleBase
 {
     private const string ZlibVersion = "1.3.1";
     private const string ZlibUrl = $"https://github.com/madler/zlib/releases/download/v{ZlibVersion}/zlib-{ZlibVersion}.tar.gz";
-    private const string ZlibSha256 = "38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32";
+    private const string ZlibSha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23";
     
     public ZlibEbuild(ModuleContext context) : base(context)
     {
@@ -22,7 +22,8 @@ public class ZlibEbuild : ModuleBase
         Name = "zlib";
         
         // Setup should be called in constructor as per README
-        _ = Task.Run(async () => await Setup());
+        // Wait for setup to complete so source files are available
+        Setup().GetAwaiter().GetResult();
     }
 
     public async Task<bool> Setup()
@@ -34,6 +35,7 @@ public class ZlibEbuild : ModuleBase
         if (Directory.Exists(extractPath) && File.Exists(Path.Combine(extractPath, "zlib.h")))
         {
             Console.WriteLine("Zlib already downloaded and extracted.");
+            SetupSourceFiles(extractPath);
             return true;
         }
         

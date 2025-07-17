@@ -1,18 +1,12 @@
 using ebuild.api;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace ebuild;
 
 public static class CompilerUtils
 {
-    private static readonly ILogger Logger =
-        LoggerFactory
-            .Create(builder => builder.AddConsole().AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.IncludeScopes = true;
-            }))
-            .CreateLogger("Compiler Utils");
+    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("Compiler Utils");
 
     public static string GetObjectOutputFolder(ModuleBase module)
     {
@@ -28,16 +22,39 @@ public static class CompilerUtils
             ((ModuleFile)module.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
     }
 
-    public static void ClearObjectAndPdbFiles(ModuleBase module, bool shouldLog = true)
+    public static List<string> FindBuildArtifacts(ModuleBase module, bool includeObjectFiles = true, bool includePdbFiles = true, bool includeStaticLibraries = false, bool includeDynamicLibraries = false, bool includeExecutables = false)
     {
         var objectOutputFolder = GetObjectOutputFolder(module);
-        var objectPdbFolder = objectOutputFolder; // Same as object output folder for both compilers
+        var files = new List<string>();
         
-        List<string> files =
-        [
-            .. Directory.GetFiles(objectOutputFolder, "*.obj", SearchOption.TopDirectoryOnly),
-            .. Directory.GetFiles(objectPdbFolder, "*.pdb", SearchOption.TopDirectoryOnly),
-        ];
+        if (includeObjectFiles)
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.obj", SearchOption.TopDirectoryOnly));
+        
+        if (includePdbFiles)
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.pdb", SearchOption.TopDirectoryOnly));
+        
+        if (includeStaticLibraries)
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.lib", SearchOption.TopDirectoryOnly));
+        
+        if (includeDynamicLibraries)
+        {
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.dll", SearchOption.TopDirectoryOnly));
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.so", SearchOption.TopDirectoryOnly));
+        }
+        
+        if (includeExecutables)
+        {
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "*.exe", SearchOption.TopDirectoryOnly));
+            files.AddRange(Directory.GetFiles(objectOutputFolder, "", SearchOption.TopDirectoryOnly)
+                .Where(f => !Path.HasExtension(f) && File.Exists(f)));
+        }
+        
+        return files;
+    }
+
+    public static void ClearObjectAndPdbFiles(ModuleBase module, bool shouldLog = true)
+    {
+        var files = FindBuildArtifacts(module, includeObjectFiles: true, includePdbFiles: true);
         
         foreach (var file in files)
         {
