@@ -40,7 +40,7 @@ public class MsvcLinker : LinkerBase
             }
         }
 
-        var toolRoot = await MSVCUtils.GetMsvcToolRoot("Microsoft.VisualStudio.Component.VC.CoreBuildTools");
+        var toolRoot = await MSVCUtils.GetMsvcToolRoot();
 
         var version = Config.Get().MsvcVersion ?? string.Empty;
         version = version.Trim();

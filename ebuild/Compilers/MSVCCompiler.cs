@@ -137,7 +137,7 @@ public class MsvcCompiler : CompilerBase
         {
             OptimizationLevel.None => "/Od",
             OptimizationLevel.Size => "/O1",
-            OptimizationLevel.Speed => "/O2", 
+            OptimizationLevel.Speed => "/O2",
             OptimizationLevel.Max => "/Ox",
             _ => "/O2" // Default to speed optimization
         };
@@ -226,7 +226,8 @@ public class MsvcCompiler : CompilerBase
 
         var toolRoot = await MSVCUtils.GetMsvcToolRoot();
 
-        if(string.IsNullOrEmpty(toolRoot)){
+        if (string.IsNullOrEmpty(toolRoot))
+        {
             Logger.LogInformation("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
             return false;
         }
@@ -246,14 +247,21 @@ public class MsvcCompiler : CompilerBase
             foreach (var file in Directory.GetFiles(Path.Join(toolRoot, "VC",
                          "Auxiliary", "Build"), "Microsoft.VCToolsVersion.*default.txt"))
             {
-                var content = await File.ReadAllTextAsync(file);
-                if (Version.TryParse(content, out var foundVer))
+                try
                 {
-                    versionDict.Add(foundVer, content);
-                    using (Logger.BeginScope("Version Discovery"))
+                    var content = await File.ReadAllTextAsync(file);
+                    if (Version.TryParse(content, out var foundVer))
                     {
-                        Logger.LogInformation("Found version: {content}", content);
+                        versionDict.Add(foundVer, content);
+                        using (Logger.BeginScope("Version Discovery"))
+                        {
+                            Logger.LogInformation("Found version: {content}", content);
+                        }
                     }
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError(e, "Failed to read version file: {file}", file);
                 }
             }
 
@@ -381,7 +389,7 @@ public class MsvcCompiler : CompilerBase
         }
 
         Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
-        
+
         // Use the linker if available, otherwise use default linker
         bool linkingSuccess = true;
         var linker = Linker ?? GetDefaultLinker();
@@ -393,7 +401,7 @@ public class MsvcCompiler : CompilerBase
         {
             ProcessAdditionalDependencies();
         }
-        
+
         return linkingSuccess;
     }
 
