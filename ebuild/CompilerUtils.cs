@@ -12,7 +12,7 @@ public static class CompilerUtils
                 options.SingleLine = true;
                 options.IncludeScopes = true;
             }))
-            .CreateLogger(nameof(CompilerUtils));
+            .CreateLogger("Compiler Utils");
 
     public static string GetObjectOutputFolder(ModuleBase module)
     {

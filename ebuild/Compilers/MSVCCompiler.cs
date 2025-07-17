@@ -31,11 +31,7 @@ public class MsvcCompiler : CompilerBase
             }))
             .CreateLogger("MSVC Compiler");
 
-    string GetObjectOutputFolder()
-    {
-        return CompilerUtils.GetObjectOutputFolder(CurrentModule);
-    }
-    string GetObjectPdbFolder() => GetObjectOutputFolder();
+
 
     string GetBinaryOutputFolder()
     {
@@ -175,7 +171,7 @@ public class MsvcCompiler : CompilerBase
         {
             args += "/MDd";
             args += "/Zi";
-            args += $"/Fd\"{Path.Join(GetObjectPdbFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
+            args += $"/Fd\"{Path.Join(CompilerUtils.GetObjectOutputFolder(CurrentModule), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
             args += "/FS";
             args += OptimizationLevelToArg(OptimizationLevel.None); // No optimization in debug
         }
@@ -185,8 +181,8 @@ public class MsvcCompiler : CompilerBase
             args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
         }
         args += $"/Fo:";
-        Directory.CreateDirectory(GetObjectOutputFolder());
-        args += GetObjectOutputFolder();
+        Directory.CreateDirectory(CompilerUtils.GetObjectOutputFolder(CurrentModule));
+        args += CompilerUtils.GetObjectOutputFolder(CurrentModule);
 
         if (ProcessCount != null)
         {
@@ -438,7 +434,7 @@ public class MsvcCompiler : CompilerBase
         Logger.LogInformation("Linking program");
         ArgumentBuilder argumentBuilder = new();
         var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
-        var files = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
+        var files = Directory.GetFiles(CompilerUtils.GetObjectOutputFolder(CurrentModule), "*.obj", SearchOption.TopDirectoryOnly);
         files = [.. files.Select(f => GetModuleFilePath(f, CurrentModule))];
         // ReSharper disable once StringLiteralTypo
         argumentBuilder += "/nologo";
@@ -594,7 +590,7 @@ public class MsvcCompiler : CompilerBase
         if (CurrentModule == null)
             return;
         var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
-        var files = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
+        var files = Directory.GetFiles(CompilerUtils.GetObjectOutputFolder(CurrentModule), "*.obj", SearchOption.TopDirectoryOnly);
         //TODO: add files from the dependencies.
         Directory.CreateDirectory(Path.Join(GetBinaryOutputFolder(), "lib"));
         // ReSharper disable once StringLiteralTypo

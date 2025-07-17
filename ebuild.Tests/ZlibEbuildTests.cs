@@ -47,11 +47,43 @@ public class ZlibEbuildTests
     }
 
     [Test]
-    public void ZlibEbuild_Should_Build_Successfully()
+    public async Task ZlibEbuild_Should_Build_Successfully()
     {
-        // Skip this test for now due to stack overflow issue in ebuild CLI
-        // This test verifies that the zlib.ebuild.cs module can be built using the ebuild CLI
-        Assert.Ignore("Integration test skipped due to stack overflow issue in ebuild CLI");
+        // Arrange
+        var workingDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib");
+        var zlibModulePath = Path.Combine(workingDirectory, "zlib.ebuild.cs");
+        
+        // Ensure the module file exists
+        Assert.That(File.Exists(zlibModulePath), Is.True, $"zlib.ebuild.cs should exist at {zlibModulePath}");
+        
+        // Act
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "ebuild.csproj")}\" -- build zlib.ebuild.cs",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        
+        using var process = Process.Start(startInfo);
+        Assert.That(process, Is.Not.Null, "Process should start successfully");
+        
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        
+        // Assert
+        Console.WriteLine($"Standard Output: {output}");
+        Console.WriteLine($"Standard Error: {error}");
+        
+        // The build should not result in a stack overflow or other critical error
+        Assert.That(error, Does.Not.Contain("StackOverflowException"), "Should not have stack overflow");
+        Assert.That(error, Does.Not.Contain("stack overflow"), "Should not have stack overflow");
+        
+        // The process should exit cleanly (exit code 0 indicates success)
+        Assert.That(process.ExitCode, Is.EqualTo(0), $"Build should succeed. Exit code: {process.ExitCode}, Error: {error}");
     }
 
     [TearDown]

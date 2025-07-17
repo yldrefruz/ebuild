@@ -85,7 +85,7 @@ public static class EBuild
         builder
             .AddConsole()
             .AddSimpleConsole(options => { options.SingleLine = true; })
-            .AddFilter(level => !DisableLogging && level >= Config.Get().MinLogLevel && level != LogLevel.None)
+            .AddFilter(level => !DisableLogging && level >= LogLevel.Information && level != LogLevel.None)
             .AddConsoleFormatter<LoggerFormatter, ConsoleFormatterOptions>(options => { })
             .AddProvider(new FileLoggerProvider(
                 new StreamWriter(CreateLogFile(), Encoding.UTF8)))

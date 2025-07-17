@@ -345,7 +345,7 @@ public class GccCompiler : CompilerBase
             return false;
 
         var sourceFiles = CurrentModule.SourceFiles;
-        var outputDir = GetObjectOutputFolder();
+        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
         Directory.CreateDirectory(outputDir);
 
         // Generate compile command for object files
@@ -425,10 +425,6 @@ public class GccCompiler : CompilerBase
         return true;
     }
 
-    private string GetObjectOutputFolder()
-    {
-        return CompilerUtils.GetObjectOutputFolder(CurrentModule);
-    }
 
     private void ParseGccOutput(string output)
     {
