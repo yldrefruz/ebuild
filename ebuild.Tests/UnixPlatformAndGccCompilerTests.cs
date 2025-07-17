@@ -95,12 +95,13 @@ public class GccCompilerTests
         // Arrange
         var compiler = new GccCompiler();
         var platform = new UnixPlatform();
-        
-        // Act
-        var isAvailable = compiler.IsAvailable(platform);
-        
-        // Assert
-        Assert.That(isAvailable, Is.True);
+        if(PlatformRegistry.GetHostPlatform().GetType() == typeof(UnixPlatform))
+        {
+            // Act
+            var isAvailable = compiler.IsAvailable(platform);
+            // Assert
+            Assert.That(isAvailable, Is.True);
+        }
     }
 
     [Test]
