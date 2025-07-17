@@ -25,6 +25,11 @@ public static class CompilerUtils
     public static List<string> FindBuildArtifacts(ModuleBase module, bool includeObjectFiles = true, bool includePdbFiles = true, bool includeStaticLibraries = false, bool includeDynamicLibraries = false, bool includeExecutables = false)
     {
         var objectOutputFolder = GetObjectOutputFolder(module);
+        if(objectOutputFolder == null || !Directory.Exists(objectOutputFolder))
+        {
+            Logger.LogInformation("Object output folder {folder} does not exist", objectOutputFolder);
+            return new List<string>();
+        }
         var files = new List<string>();
         
         if (includeObjectFiles)
