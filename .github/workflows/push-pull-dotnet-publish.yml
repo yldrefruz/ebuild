@@ -29,7 +29,7 @@ jobs:
         cmake: true
         ninja: true
     - name: Restore dependencies
-      run: msbuild ebuild.sln /t:Restore /p:Configuration=Release /p:Platform=x64
+      run: msbuild ebuild.sln /t:Restore /p:Configuration=Release /p:Platform="Any CPU"
 
     - name: Build solution
       run: dotnet build ebuild.sln --configuration Release --no-restore
