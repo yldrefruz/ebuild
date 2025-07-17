@@ -32,10 +32,10 @@ jobs:
       run: msbuild ebuild.sln /t:Restore /p:Configuration=Release /p:Platform="Any CPU"
 
     - name: Build solution
-      run: dotnet build ebuild.sln --configuration Release --no-restore
+      run: dotnet build ebuild.sln --configuration Release --no-restore --property:Platform="Any CPU"
 
     - name: Run tests
-      run: dotnet test ebuild.sln --configuration Release --no-build
+      run: dotnet test ebuild.sln --configuration Release --no-build --property:Platform="Any CPU"
 
     - name: Publish artifacts
       run: dotnet publish ebuild/ebuild.csproj --configuration Release --output ./publish
