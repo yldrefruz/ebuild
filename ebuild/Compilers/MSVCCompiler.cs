@@ -247,6 +247,11 @@ public class MsvcCompiler : CompilerBase
 
         toolRoot = toolRoot.Trim();
 
+        if(string.IsNullOrEmpty(toolRoot)){
+            Logger.LogInformation("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
+            return false;
+        }
+
 
         var version = Config.Get().MsvcVersion ?? string.Empty;
         version = version.Trim();
