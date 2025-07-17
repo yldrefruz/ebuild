@@ -180,11 +180,14 @@ public class MsvcCompiler : CompilerBase
             args += "/MD";
             args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
         }
-        args += $"/Fo:";
-        Directory.CreateDirectory(CompilerUtils.GetObjectOutputFolder(CurrentModule));
-        args += CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        if (bSourceFiles)
+        {
+            args += $"/Fo:";
+            Directory.CreateDirectory(CompilerUtils.GetObjectOutputFolder(CurrentModule));
+            args += CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        }
 
-        if (ProcessCount != null)
+        if (ProcessCount != null && bSourceFiles)
         {
             args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
         }
@@ -299,93 +302,121 @@ public class MsvcCompiler : CompilerBase
         }
         MutateTarget();
 
-        var commandFileContent = GenerateCompileCommand(true);
-        //TODO: Remove this
-        Logger.LogInformation(commandFileContent);
-        var commandFilePath = Path.GetTempFileName();
-        await using (var commandFile = File.OpenWrite(commandFilePath))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(commandFileContent);
-            await writer.FlushAsync();
-            commandFile.Flush();
-        }
-
         if (CleanCompilation)
         {
             //Delete all obj files before compiling
             ClearObjectAndPdbFiles(false);
         }
 
-        var startInfo = new ProcessStartInfo()
+        // Compile each source file individually
+        var sourceFiles = CurrentModule.SourceFiles;
+        if (sourceFiles.Count == 0)
         {
-            WorkingDirectory = Directory.GetCurrentDirectory(),
-            Arguments = $"@\"{commandFilePath}\"",
-            FileName = GetExecutablePath(),
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            CreateNoWindow = true,
-            UseShellExecute = false,
-        };
-        var proc = Process.Start(startInfo);
-        if (proc == null)
-        {
-            Logger.LogError("Can't start cl.exe");
-            Environment.ExitCode = 1;
-            return false;
+            Logger.LogWarning("No source files to compile");
+            return true;
         }
 
-        proc.OutputDataReceived += (_, args) =>
-        {
-            if (args.Data != null)
-            {
-                var match = CLMessageRegex.Match(args.Data);
-                var type = match.Groups["type"].Value;
-                var code = match.Groups["code"].Value;
-                var message = match.Groups["message"].Value;
-                var file = match.Groups["file"].Value;
-                var location = match.Groups["location"].Value;
-                if (type == "error")
-                {
-                    Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
-                }
-                else if (type == "warning")
-                {
-                    Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
-                }
-                else if (type == "note")
-                {
-                    Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
-                }
-                else
-                {
-                    Logger.LogInformation("{data}", args.Data);
-                }
+        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        Directory.CreateDirectory(outputDir);
 
-            }
-        };
-        proc.ErrorDataReceived += (_, args) =>
+        // Compile each source file individually
+        foreach (var sourceFile in sourceFiles)
         {
-            if (args.Data != null) Logger.LogError("{data}", args.Data);
-        };
-        proc.Start();
-        proc.BeginErrorReadLine();
-        proc.BeginOutputReadLine();
-        await proc.WaitForExitAsync();
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var objectFile = Path.Combine(outputDir, $"{fileName}.obj");
 
-        if (File.Exists(commandFilePath))
-            File.Delete(commandFilePath);
-        if (proc.ExitCode != 0)
-        {
-            Logger.LogError("Compilation Failed, {exitCode}", proc.ExitCode);
-            if (CleanCompilation)
+            // Generate compile command for this specific source file
+            var commandContent = GenerateCompileCommand(false); // Don't include all source files
+            commandContent += $" \"{GetModuleFilePath(sourceFile, CurrentModule)}\""; // Add this specific source file
+            commandContent += $" /Fo\"{objectFile}\""; // Add specific output file
+
+            // Write command to a temporary file to avoid command length limits
+            var commandFilePath = Path.GetTempFileName();
+            await File.WriteAllTextAsync(commandFilePath, commandContent);
+
+            var startInfo = new ProcessStartInfo()
             {
-                ClearObjectAndPdbFiles();
+                WorkingDirectory = Directory.GetCurrentDirectory(),
+                Arguments = $"@\"{commandFilePath}\"",
+                FileName = GetExecutablePath(),
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            };
+
+            Logger.LogInformation("Compiling: {sourceFile}", sourceFile);
+            Logger.LogDebug("Command file content: {content}", commandContent);
+
+            var proc = Process.Start(startInfo);
+            if (proc == null)
+            {
+                Logger.LogError("Can't start cl.exe");
+                Environment.ExitCode = 1;
+                return false;
             }
 
-            return false;
+            proc.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    var match = CLMessageRegex.Match(args.Data);
+                    var type = match.Groups["type"].Value;
+                    var code = match.Groups["code"].Value;
+                    var message = match.Groups["message"].Value;
+                    var file = match.Groups["file"].Value;
+                    var location = match.Groups["location"].Value;
+                    if (type == "error")
+                    {
+                        Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    }
+                    else if (type == "warning")
+                    {
+                        Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    }
+                    else if (type == "note")
+                    {
+                        Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
+                    }
+                    else
+                    {
+                        Logger.LogInformation("{data}", args.Data);
+                    }
+                }
+            };
+            proc.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data != null) Logger.LogError("{data}", args.Data);
+            };
+            proc.Start();
+            proc.BeginErrorReadLine();
+            proc.BeginOutputReadLine();
+            await proc.WaitForExitAsync();
+
+            // Clean up command file
+            if (File.Exists(commandFilePath))
+            {
+                try
+                {
+                    File.Delete(commandFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning("Failed to delete command file {file}: {error}", commandFilePath, ex.Message);
+                }
+            }
+
+            if (proc.ExitCode != 0)
+            {
+                Logger.LogError("Compilation Failed for {sourceFile}, {exitCode}", sourceFile, proc.ExitCode);
+                if (CleanCompilation)
+                {
+                    ClearObjectAndPdbFiles();
+                }
+                return false;
+            }
         }
 
         Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
