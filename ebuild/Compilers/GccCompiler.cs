@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.Linkers;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
@@ -19,6 +20,11 @@ public class GccCompiler : CompilerBase
     private static readonly Regex GccMessageRegex = new(@"^(?<file>.*):(?<line>\d+):(?<column>\d+): (?<type>error|warning|note): (?<message>.*)$");
 
     private string _gccPath = string.Empty;
+
+    public override LinkerBase GetDefaultLinker()
+    {
+        return LinkerRegistry.GetInstance().Get<GccLinker>();
+    }
 
     public override bool IsAvailable(PlatformBase platform)
     {
@@ -312,25 +318,53 @@ public class GccCompiler : CompilerBase
             var outputDir = GetBinaryOutputFolder();
             Directory.CreateDirectory(outputDir);
 
-            // Generate compile command using GenerateCompileCommand(true) to include source files
-            var commandContent = GenerateCompileCommand(true);
+            // For compilation, we compile to object files
+            var success = await CompileToObjectFiles();
             
-            // Add module type specific flags
-            switch (CurrentModule.Type)
+            // If compilation succeeds, perform linking
+            if (success)
             {
-                case ModuleType.Executable:
-                case ModuleType.ExecutableWin32:
-                    commandContent += $" -o \"{Path.Combine(outputDir, CurrentModule.Name ?? "output")}\"";
-                    break;
-                case ModuleType.StaticLibrary:
-                    commandContent += " -c"; // Compile only for static library
-                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".a")}\"";
-                    break;
-                case ModuleType.SharedLibrary:
-                    commandContent += " -shared -fPIC"; // Position independent code
-                    commandContent += $" -o \"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".so")}\"";
-                    break;
+                var linker = Linker ?? GetDefaultLinker();
+                await linker.Setup();
+                linker.SetModule(CurrentModule);
+                success = await linker.Link();
             }
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Compilation failed with exception: {message}", ex.Message);
+            return false;
+        }
+    }
+
+    private async Task<bool> CompileToObjectFiles()
+    {
+        if (CurrentModule == null)
+            return false;
+
+        var sourceFiles = CurrentModule.SourceFiles;
+        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        Directory.CreateDirectory(outputDir);
+
+        if (sourceFiles.Count == 0)
+        {
+            Logger.LogWarning("No source files to compile");
+            return true;
+        }
+
+        // Compile each source file individually
+        foreach (var sourceFile in sourceFiles)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var objectFile = Path.Combine(outputDir, $"{fileName}.obj");
+
+            // Generate compile command for this specific source file
+            var commandContent = GenerateCompileCommand(false); // Don't include all source files
+            commandContent += " -c"; // Compile only, don't link
+            commandContent += $" \"{sourceFile}\""; // Add this specific source file
+            commandContent += $" -o \"{objectFile}\""; // Add specific output file
 
             // Write command to a temporary file to avoid command length limits
             var commandFilePath = Path.GetTempFileName();
@@ -386,9 +420,9 @@ public class GccCompiler : CompilerBase
                 {
                     File.Delete(commandFilePath);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore cleanup errors
+                    Logger.LogWarning("Failed to delete command file {file}: {error}", commandFilePath, ex.Message);
                 }
             }
 
@@ -397,16 +431,12 @@ public class GccCompiler : CompilerBase
                 Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
                 return false;
             }
+        }
 
-            Logger.LogInformation("Compilation successful");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError("Compilation failed with exception: {message}", ex.Message);
-            return false;
-        }
+        Logger.LogInformation("Compilation successful");
+        return true;
     }
+
 
     private void ParseGccOutput(string output)
     {
