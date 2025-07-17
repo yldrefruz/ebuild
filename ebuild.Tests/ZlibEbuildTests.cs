@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -90,19 +91,65 @@ public class ZlibEbuildTests
         var objectFiles = Directory.GetFiles(buildDir, "*.obj", SearchOption.AllDirectories);
         Assert.That(objectFiles, Is.Not.Empty, "Should have compiled object files");
         
-        // Check for static library file (may not exist if linker is not found)
-        var staticLibFiles = Directory.GetFiles(buildDir, "*.lib", SearchOption.AllDirectories);
-        if (staticLibFiles.Length > 0)
+        // Verify that the linker is available and properly registered
+        var platform = PlatformRegistry.GetHostPlatform();
+        LinkerBase linker;
+        try
         {
-            Console.WriteLine("Static library files found:");
-            foreach (var libFile in staticLibFiles)
+            linker = LinkerRegistry.GetInstance().Get<GccLinker>();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            Assert.Fail($"GccLinker should be registered in LinkerRegistry. Error: {ex.Message}");
+            return;
+        }
+        catch (Exception ex)
+        {
+            Assert.Fail($"Failed to get GccLinker from registry: {ex.Message}");
+            return;
+        }
+        
+        // Verify that the linker is available on this platform
+        Assert.That(linker.IsAvailable(platform), Is.True, $"GccLinker should be available on {platform.GetName()} platform with GCC installed");
+        
+        // Setup the linker to ensure it's properly configured
+        var linkerSetupSuccess = await linker.Setup();
+        Assert.That(linkerSetupSuccess, Is.True, "GccLinker setup should succeed");
+        
+        // Check for static library files in the correct directory (Binaries)
+        var binariesDir = Path.Combine(workingDirectory, "Binaries");
+        if (Directory.Exists(binariesDir))
+        {
+            var staticLibFiles = Directory.GetFiles(binariesDir, "*.lib", SearchOption.AllDirectories);
+            if (staticLibFiles.Length > 0)
             {
-                Console.WriteLine($"  {libFile}");
+                Console.WriteLine("Static library files found:");
+                foreach (var libFile in staticLibFiles)
+                {
+                    Console.WriteLine($"  {libFile}");
+                }
+            }
+            else
+            {
+                // Try checking for .a files (Unix static libraries)
+                var unixStaticLibFiles = Directory.GetFiles(binariesDir, "*.a", SearchOption.AllDirectories);
+                if (unixStaticLibFiles.Length > 0)
+                {
+                    Console.WriteLine("Unix static library files found:");
+                    foreach (var libFile in unixStaticLibFiles)
+                    {
+                        Console.WriteLine($"  {libFile}");
+                    }
+                }
+                else
+                {
+                    Assert.Fail("Static library files should be created since linker is available and setup succeeded");
+                }
             }
         }
         else
         {
-            Console.WriteLine("No static library files found - this is expected if linker is not available");
+            Assert.Fail("Binaries directory should exist after successful linking");
         }
         
         // Verify some expected object files exist (from known zlib source files)

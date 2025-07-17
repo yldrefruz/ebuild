@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using ebuild.api;
 using Microsoft.Extensions.Logging;
 
@@ -124,15 +125,36 @@ public class GccLinker : LinkerBase
 
             // Build linking command based on module type
             var linkCommand = BuildLinkCommand();
-
-            // Write command to a temporary file to avoid command length limits
+            
+            // Write command to a temporary file to avoid command length limits (only for non-ar commands)
             var commandFilePath = Path.GetTempFileName();
-            await File.WriteAllTextAsync(commandFilePath, linkCommand);
+            
+            // For static libraries, use ar directly instead of gcc
+            string executablePath = _gccPath;
+            string arguments = $"@{commandFilePath}";
+            
+            if (CurrentModule.Type == ModuleType.StaticLibrary)
+            {
+                // For static libraries, use ar directly
+                executablePath = "ar";
+                
+                // Extract the ar command arguments (skip the "ar" part)
+                var commandParts = linkCommand.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (commandParts.Length > 1 && commandParts[0] == "ar")
+                {
+                    // Join all arguments except the first "ar"
+                    arguments = string.Join(' ', commandParts.Skip(1));
+                }
+            }
+            else
+            {
+                await File.WriteAllTextAsync(commandFilePath, linkCommand);
+            }
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = _gccPath,
-                Arguments = $"@{commandFilePath}", // Use command file
+                FileName = executablePath,
+                Arguments = CurrentModule.Type == ModuleType.StaticLibrary ? arguments : $"@{commandFilePath}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -140,8 +162,11 @@ public class GccLinker : LinkerBase
                 WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
             };
 
-            Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
-            Logger.LogDebug("Command file content: {content}", linkCommand);
+            Logger.LogInformation("Executing: {command} {arguments}", executablePath, arguments);
+            if (CurrentModule.Type != ModuleType.StaticLibrary)
+            {
+                Logger.LogDebug("Command file content: {content}", linkCommand);
+            }
 
             var process = Process.Start(startInfo);
             if (process == null)
@@ -154,8 +179,8 @@ public class GccLinker : LinkerBase
             var error = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
 
-            // Clean up command file
-            if (File.Exists(commandFilePath))
+            // Clean up command file (only if it was created)
+            if (CurrentModule.Type != ModuleType.StaticLibrary && File.Exists(commandFilePath))
             {
                 try
                 {

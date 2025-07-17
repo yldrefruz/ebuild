@@ -3,6 +3,7 @@ using System.Text;
 using ebuild.api;
 using ebuild.Commands;
 using ebuild.Compilers;
+using ebuild.Linkers;
 using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -109,6 +110,7 @@ public static class EBuild
     {
         PlatformRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
         CompilerRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
+        LinkerRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
 
 
         var rootCommand = new RootCommand
