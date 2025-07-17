@@ -229,7 +229,7 @@ public class MsvcCompiler : CompilerBase
         {
             var vsWhereExecutable = Path.Join(MSVCUtils.GetVsWhereDirectory(), "vswhere.exe");
             const string args =
-                "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
+                "-latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.* -property installationPath";
             var vsWhereProcess = new Process();
             var processStartInfo = new ProcessStartInfo
             {

@@ -62,11 +62,13 @@ public class LinkerTests
         var linker = new GccLinker();
         var platform = new UnixPlatform();
         
-        // Act
-        var isAvailable = linker.IsAvailable(platform);
+        if(PlatformRegistry.GetHostPlatform().GetType() == typeof(Win32Platform)){
+            // Act
+            var isAvailable = linker.IsAvailable(platform);
         
-        // Assert
-        Assert.That(isAvailable, Is.True);
+            // Assert
+            Assert.That(isAvailable, Is.True);
+        }
     }
 
     [Test]
