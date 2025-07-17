@@ -22,6 +22,13 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Setup MSVC
+      uses: aminya/setup-cpp@v1.7.1
+      with:
+        msvc: true
+        cmake: true
+        ninja: true
+
     - name: Restore dependencies
       run: dotnet restore ebuild.sln
 
