@@ -348,77 +348,89 @@ public class GccCompiler : CompilerBase
         var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
         Directory.CreateDirectory(outputDir);
 
-        // Generate compile command for object files
-        var commandContent = GenerateCompileCommand(true);
-        commandContent += " -c"; // Compile only, don't link
-
-        // Add object output directory
-        commandContent += $" -o {outputDir}";
-
-        // Write command to a temporary file to avoid command length limits
-        var commandFilePath = Path.GetTempFileName();
-        await File.WriteAllTextAsync(commandFilePath, commandContent);
-
-        var startInfo = new ProcessStartInfo
+        if (sourceFiles.Count == 0)
         {
-            FileName = _gccPath,
-            Arguments = $"@{commandFilePath}", // Use command file
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
-        };
-
-        Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
-        Logger.LogDebug("Command file content: {content}", commandContent);
-
-        var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            Logger.LogError("Failed to start GCC process");
-            return false;
+            Logger.LogWarning("No source files to compile");
+            return true;
         }
 
-        // Set up async reading of output and error streams
-        process.OutputDataReceived += (_, args) =>
+        // Compile each source file individually
+        foreach (var sourceFile in sourceFiles)
         {
-            if (args.Data != null)
-            {
-                ParseGccOutput(args.Data);
-            }
-        };
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var objectFile = Path.Combine(outputDir, $"{fileName}.obj");
 
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data != null)
-            {
-                ParseGccOutput(args.Data);
-            }
-        };
+            // Generate compile command for this specific source file
+            var commandContent = GenerateCompileCommand(false); // Don't include all source files
+            commandContent += " -c"; // Compile only, don't link
+            commandContent += $" \"{sourceFile}\""; // Add this specific source file
+            commandContent += $" -o \"{objectFile}\""; // Add specific output file
 
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        await process.WaitForExitAsync();
+            // Write command to a temporary file to avoid command length limits
+            var commandFilePath = Path.GetTempFileName();
+            await File.WriteAllTextAsync(commandFilePath, commandContent);
 
-        // Clean up command file
-        if (File.Exists(commandFilePath))
-        {
-            try
+            var startInfo = new ProcessStartInfo
             {
-                File.Delete(commandFilePath);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
-        }
+                FileName = _gccPath,
+                Arguments = $"@{commandFilePath}", // Use command file
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
+            };
 
-        if (process.ExitCode != 0)
-        {
-            Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
-            return false;
+            Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
+            Logger.LogDebug("Command file content: {content}", commandContent);
+
+            var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                Logger.LogError("Failed to start GCC process");
+                return false;
+            }
+
+            // Set up async reading of output and error streams
+            process.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    ParseGccOutput(args.Data);
+                }
+            };
+
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
+                {
+                    ParseGccOutput(args.Data);
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync();
+
+            // Clean up command file
+            if (File.Exists(commandFilePath))
+            {
+                try
+                {
+                    File.Delete(commandFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning("Failed to delete command file {file}: {error}", commandFilePath, ex.Message);
+                }
+            }
+
+            if (process.ExitCode != 0)
+            {
+                Logger.LogError("GCC compilation failed with exit code: {exitCode}", process.ExitCode);
+                return false;
+            }
         }
 
         Logger.LogInformation("Compilation successful");
