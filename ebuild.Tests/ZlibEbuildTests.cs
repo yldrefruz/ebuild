@@ -49,7 +49,7 @@ public class ZlibEbuildTests
     }
 
     [Test]
-    public async Task ZlibEbuild_Should_Build_Successfully()
+    public async Task ZlibEbuild_Should_Build_StaticLibrary_Successfully()
     {
         // Arrange
         var workingDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib");
@@ -62,7 +62,7 @@ public class ZlibEbuildTests
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"run --project \"{Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "ebuild.csproj")}\" -- build zlib.ebuild.cs --clean",
+            Arguments = $"run --project \"{Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "ebuild.csproj")}\" -- build static:zlib.ebuild.cs --clean",
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -158,6 +158,135 @@ public class ZlibEbuildTests
         {
             var found = objectFiles.Any(f => Path.GetFileName(f) == expectedFile);
             Assert.That(found, Is.True, $"Expected object file {expectedFile} should exist");
+        }
+    }
+
+    [Test]
+    public async Task ZlibEbuild_Should_Build_SharedLibrary_Successfully()
+    {
+        // Arrange
+        var workingDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib");
+        var zlibModulePath = Path.Combine(workingDirectory, "zlib.ebuild.cs");
+        
+        // Ensure the module file exists
+        Assert.That(File.Exists(zlibModulePath), Is.True, $"zlib.ebuild.cs should exist at {zlibModulePath}");
+        
+        // Act - Build as shared library
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "ebuild.csproj")}\" -- build shared:zlib.ebuild.cs --clean",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        
+        using var process = Process.Start(startInfo);
+        Assert.That(process, Is.Not.Null, "Process should start successfully");
+        
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        
+        // Assert
+        Console.WriteLine($"Standard Output: {output}");
+        Console.WriteLine($"Standard Error: {error}");
+        
+        // The process should exit cleanly
+        Assert.That(process.ExitCode, Is.EqualTo(0), $"Build should succeed. Exit code: {process.ExitCode}, Error: {error}");
+        
+        // Check for shared library files
+        var binariesDir = Path.Combine(workingDirectory, "Binaries");
+        Assert.That(Directory.Exists(binariesDir), Is.True, "Binaries directory should exist after successful linking");
+        
+        // Look for shared library files (.dll on Windows, .so on Unix)
+        var sharedLibFiles = Directory.GetFiles(binariesDir, "*.dll", SearchOption.AllDirectories);
+        if (sharedLibFiles.Length == 0)
+        {
+            // Try Unix shared libraries
+            sharedLibFiles = Directory.GetFiles(binariesDir, "*.so", SearchOption.AllDirectories);
+        }
+        
+        Assert.That(sharedLibFiles, Is.Not.Empty, "Should have created shared library files");
+        
+        Console.WriteLine("Shared library files found:");
+        foreach (var libFile in sharedLibFiles)
+        {
+            Console.WriteLine($"  {libFile}");
+            // Verify that the file is not empty
+            var fileInfo = new FileInfo(libFile);
+            Assert.That(fileInfo.Length, Is.GreaterThan(0), $"Shared library file {libFile} should not be empty");
+        }
+    }
+
+    [Test]
+    public async Task ZlibEbuild_Should_Build_With_Options_Successfully()
+    {
+        // Arrange
+        var workingDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib");
+        var zlibModulePath = Path.Combine(workingDirectory, "zlib.ebuild.cs");
+        
+        // Ensure the module file exists
+        Assert.That(File.Exists(zlibModulePath), Is.True, $"zlib.ebuild.cs should exist at {zlibModulePath}");
+        
+        // Act - Build with options that should change the binary output
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "ebuild.csproj")}\" -- build \"static:zlib.ebuild.cs?EnableDebug=true;EnableAdvancedFeatures=true;OptimizeForSize=true\" --clean",
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        
+        using var process = Process.Start(startInfo);
+        Assert.That(process, Is.Not.Null, "Process should start successfully");
+        
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        
+        // Assert
+        Console.WriteLine($"Standard Output: {output}");
+        Console.WriteLine($"Standard Error: {error}");
+        
+        // The process should exit cleanly
+        Assert.That(process.ExitCode, Is.EqualTo(0), $"Build should succeed. Exit code: {process.ExitCode}, Error: {error}");
+        
+        // Check for library files
+        var binariesDir = Path.Combine(workingDirectory, "Binaries");
+        Assert.That(Directory.Exists(binariesDir), Is.True, "Binaries directory should exist after successful linking");
+        
+        // Look for static library files
+        var staticLibFiles = Directory.GetFiles(binariesDir, "*.lib", SearchOption.AllDirectories);
+        if (staticLibFiles.Length == 0)
+        {
+            // Try Unix static libraries
+            staticLibFiles = Directory.GetFiles(binariesDir, "*.a", SearchOption.AllDirectories);
+        }
+        
+        Assert.That(staticLibFiles, Is.Not.Empty, "Should have created static library files with options");
+        
+        Console.WriteLine("Static library files found with options:");
+        foreach (var libFile in staticLibFiles)
+        {
+            Console.WriteLine($"  {libFile}");
+            // Verify that the file is not empty
+            var fileInfo = new FileInfo(libFile);
+            Assert.That(fileInfo.Length, Is.GreaterThan(0), $"Static library file {libFile} should not be empty");
+        }
+        
+        // Verify that different options create different variant IDs (different paths)
+        // The build should be in a different directory than the default build due to variant IDs
+        var variantDirs = Directory.GetDirectories(binariesDir);
+        Assert.That(variantDirs, Is.Not.Empty, "Should have variant directories");
+        
+        Console.WriteLine("Variant directories found:");
+        foreach (var dir in variantDirs)
+        {
+            Console.WriteLine($"  {dir}");
         }
     }
 

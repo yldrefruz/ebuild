@@ -220,7 +220,35 @@ public class GccLinker : LinkerBase
         
         // Add object files (assuming they exist from compilation)
         var objectFiles = Directory.GetFiles(GetObjectOutputFolder(), "*.o", SearchOption.TopDirectoryOnly);
-        args += objectFiles;
+        if (objectFiles.Length == 0)
+        {
+            // Try .obj extension (for compatibility with MSVC style naming)
+            objectFiles = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
+        }
+        
+        // Add module type specific flags and output first, then common arguments
+        var outputDir = GetBinaryOutputFolder();
+        Directory.CreateDirectory(outputDir);  // Ensure output directory exists
+        
+        switch (CurrentModule.Type)
+        {
+            case ModuleType.Executable:
+            case ModuleType.ExecutableWin32:
+                args += objectFiles;
+                args += "-o";
+                args += $"{Path.Combine(outputDir, CurrentModule.Name ?? "output")}";
+                break;
+            case ModuleType.StaticLibrary:
+                // For static libraries, we need to use ar instead of gcc
+                return BuildArchiveCommand(objectFiles);
+            case ModuleType.SharedLibrary:
+                args += objectFiles;
+                args += "-shared";
+                args += "-fPIC";
+                args += $"-o";
+                args += $"{Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".so")}";
+                break;
+        }
 
         // Add library search paths
         foreach (var libPath in CurrentModule.LibrarySearchPaths.Joined())
@@ -287,23 +315,6 @@ public class GccLinker : LinkerBase
         // Add additional linker options
         args += AdditionalLinkerOptions;
 
-        // Add module type specific flags and output
-        var outputDir = GetBinaryOutputFolder();
-        switch (CurrentModule.Type)
-        {
-            case ModuleType.Executable:
-            case ModuleType.ExecutableWin32:
-                args += $"-o {Path.Combine(outputDir, CurrentModule.Name ?? "output")}";
-                break;
-            case ModuleType.StaticLibrary:
-                // For static libraries, we need to use ar instead of gcc
-                return BuildArchiveCommand(objectFiles);
-            case ModuleType.SharedLibrary:
-                args += "-shared -fPIC";
-                args += $"-o {Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".so")}";
-                break;
-        }
-
         return args.ToString();
     }
 
@@ -311,10 +322,13 @@ public class GccLinker : LinkerBase
     {
         if (CurrentModule == null) throw new NullReferenceException("CurrentModule is null");
 
+        var outputDir = LinkerUtils.GetBinaryOutputFolder(CurrentModule);
+        Directory.CreateDirectory(outputDir);  // Ensure output directory exists
+        
         ArgumentBuilder args = new();
         args += "ar";
         args += "rcs";
-        args += Path.Combine(LinkerUtils.GetBinaryOutputFolder(CurrentModule), (CurrentModule.Name ?? "output") + ".a");
+        args += Path.Combine(outputDir, (CurrentModule.Name ?? "output") + ".a");
         args += objectFiles;
 
         return args.ToString();
