@@ -32,9 +32,12 @@ public class ZlibEbuild : ModuleBase
         Type = ModuleType.StaticLibrary;
         Name = "zlib";
         
+        // Use C99 standard for zlib (it's a C library)
+        CStandard = CStandards.C99;
+        
         // Setup should be called in constructor as per README
-        // Wait for setup to complete so source files are available
-        Setup().GetAwaiter().GetResult();
+        // Call setup synchronously instead of using async/await
+        SetupSync();
     }
     
     [OutputTransformer("shared", "shared")]
@@ -53,6 +56,11 @@ public class ZlibEbuild : ModuleBase
     {
         Type = ModuleType.StaticLibrary;
         // This is the default, so nothing special needed
+    }
+    
+    private void SetupSync()
+    {
+        Setup().GetAwaiter().GetResult();
     }
 
     public async Task<bool> Setup()

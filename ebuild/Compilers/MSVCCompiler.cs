@@ -518,7 +518,7 @@ public class MsvcCompiler : CompilerBase
 
     public override LinkerBase GetDefaultLinker()
     {
-        return LinkerRegistry.GetInstance().Get<MsvcLinker>();
+        return LinkerRegistry.GetInstance().Get<MsvcLinkLinker>();
     }
 
     public override bool IsAvailable(PlatformBase platform)

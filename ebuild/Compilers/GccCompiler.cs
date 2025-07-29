@@ -184,10 +184,24 @@ public class GccCompiler : CompilerBase
         
         ArgumentBuilder args = new();
         
-        // Add standard flags based on module's CppStandard
-        args += CppStandardToArg(CurrentModule.CppStandard);
+        // Add standard flags based on module's CStandard or CppStandard
+        if (CurrentModule.CStandard.HasValue)
+        {
+            args += CStandardToArg(CurrentModule.CStandard.Value);
+        }
+        else
+        {
+            args += CppStandardToArg(CurrentModule.CppStandard);
+        }
+        
         args += "-Wall"; // Enable all warnings
         args += "-Wextra"; // Enable extra warnings
+        
+        // Add -fPIC for shared libraries (position-independent code)
+        if (CurrentModule.Type == ModuleType.SharedLibrary)
+        {
+            args += "-fPIC";
+        }
         
         // Add debug or release flags based on configuration
         if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
@@ -273,6 +287,19 @@ public class GccCompiler : CompilerBase
             CppStandards.Cpp20 => "-std=c++20",
             CppStandards.CppLatest => "-std=c++2b", // Latest supported by GCC
             _ => "-std=c++20" // Default to C++20
+        };
+    }
+
+    private static string CStandardToArg(CStandards standard)
+    {
+        return standard switch
+        {
+            CStandards.C89 => "-std=c89",
+            CStandards.C99 => "-std=c99",
+            CStandards.C11 => "-std=c11",
+            CStandards.C17 => "-std=c17",
+            CStandards.C2x => "-std=c2x",
+            _ => "-std=c99" // Default to C99
         };
     }
 

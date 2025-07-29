@@ -21,7 +21,8 @@ public class LinkerTests
             
             // Also try to register explicitly
             LinkerRegistry.GetInstance().Register("Gcc", typeof(GccLinker));
-            LinkerRegistry.GetInstance().Register("Msvc", typeof(MsvcLinker));
+            LinkerRegistry.GetInstance().Register("MsvcLink", typeof(MsvcLinkLinker));
+            LinkerRegistry.GetInstance().Register("MsvcLib", typeof(MsvcLibLinker));
         }
         catch (System.ArgumentException)
         {
@@ -43,16 +44,29 @@ public class LinkerTests
     }
 
     [Test]
-    public void MsvcLinker_Should_Have_Correct_Name()
+    public void MsvcLinkLinker_Should_Have_Correct_Name()
     {
         // Arrange
-        var linker = new MsvcLinker();
+        var linker = new MsvcLinkLinker();
         
         // Act
         var name = linker.GetName();
         
         // Assert
-        Assert.That(name, Is.EqualTo("Msvc"));
+        Assert.That(name, Is.EqualTo("MsvcLink"));
+    }
+
+    [Test]
+    public void MsvcLibLinker_Should_Have_Correct_Name()
+    {
+        // Arrange
+        var linker = new MsvcLibLinker();
+        
+        // Act
+        var name = linker.GetName();
+        
+        // Assert
+        Assert.That(name, Is.EqualTo("MsvcLib"));
     }
 
     [Test]
@@ -86,10 +100,10 @@ public class LinkerTests
     }
 
     [Test]
-    public void MsvcLinker_Should_Be_Available_For_Win32_Platform()
+    public void MsvcLinkLinker_Should_Be_Available_For_Win32_Platform()
     {
         // Arrange
-        var linker = new MsvcLinker();
+        var linker = new MsvcLinkLinker();
         var platform = new Win32Platform();
         
         // Act
@@ -100,10 +114,38 @@ public class LinkerTests
     }
 
     [Test]
-    public void MsvcLinker_Should_Not_Be_Available_For_Unix_Platform()
+    public void MsvcLinkLinker_Should_Not_Be_Available_For_Unix_Platform()
     {
         // Arrange
-        var linker = new MsvcLinker();
+        var linker = new MsvcLinkLinker();
+        var platform = new UnixPlatform();
+        
+        // Act
+        var isAvailable = linker.IsAvailable(platform);
+        
+        // Assert
+        Assert.That(isAvailable, Is.False);
+    }
+
+    [Test]
+    public void MsvcLibLinker_Should_Be_Available_For_Win32_Platform()
+    {
+        // Arrange
+        var linker = new MsvcLibLinker();
+        var platform = new Win32Platform();
+        
+        // Act
+        var isAvailable = linker.IsAvailable(platform);
+        
+        // Assert
+        Assert.That(isAvailable, Is.True);
+    }
+
+    [Test]
+    public void MsvcLibLinker_Should_Not_Be_Available_For_Unix_Platform()
+    {
+        // Arrange
+        var linker = new MsvcLibLinker();
         var platform = new UnixPlatform();
         
         // Act
@@ -133,7 +175,7 @@ public class LinkerTests
     }
 
     [Test]
-    public void LinkerRegistry_Should_Register_And_Retrieve_MsvcLinker()
+    public void LinkerRegistry_Should_Register_And_Retrieve_MsvcLinkLinker()
     {
         // Arrange
         var registry = LinkerRegistry.GetInstance();
@@ -141,14 +183,33 @@ public class LinkerTests
         // Act & Assert - Check if already registered or register manually
         try
         {
-            registry.Register("Msvc", typeof(MsvcLinker));
+            registry.Register("MsvcLink", typeof(MsvcLinkLinker));
         }
         catch (ArgumentException)
         {
             // Already registered, that's fine
         }
         
-        Assert.DoesNotThrow(() => registry.Get<MsvcLinker>());
+        Assert.DoesNotThrow(() => registry.Get<MsvcLinkLinker>());
+    }
+
+    [Test]
+    public void LinkerRegistry_Should_Register_And_Retrieve_MsvcLibLinker()
+    {
+        // Arrange
+        var registry = LinkerRegistry.GetInstance();
+        
+        // Act & Assert - Check if already registered or register manually
+        try
+        {
+            registry.Register("MsvcLib", typeof(MsvcLibLinker));
+        }
+        catch (ArgumentException)
+        {
+            // Already registered, that's fine
+        }
+        
+        Assert.DoesNotThrow(() => registry.Get<MsvcLibLinker>());
     }
 
     [Test]
@@ -159,7 +220,7 @@ public class LinkerTests
         try
         {
             registry.Register("Gcc", typeof(GccLinker));
-            registry.Register("Msvc", typeof(MsvcLinker));
+            registry.Register("MsvcLink", typeof(MsvcLinkLinker));
         }
         catch (ArgumentException)
         {
@@ -168,11 +229,11 @@ public class LinkerTests
         
         // Act
         var gccLinker = registry.Get("Gcc");
-        var msvcLinker = registry.Get("Msvc");
+        var msvcLinker = registry.Get("MsvcLink");
         
         // Assert
         Assert.That(gccLinker, Is.InstanceOf<GccLinker>());
-        Assert.That(msvcLinker, Is.InstanceOf<MsvcLinker>());
+        Assert.That(msvcLinker, Is.InstanceOf<MsvcLinkLinker>());
     }
 
     [Test]

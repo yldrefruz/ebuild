@@ -218,12 +218,24 @@ public class GccLinker : LinkerBase
 
         ArgumentBuilder args = new();
         
-        // Add object files (assuming they exist from compilation)
-        var objectFiles = Directory.GetFiles(GetObjectOutputFolder(), "*.o", SearchOption.TopDirectoryOnly);
-        if (objectFiles.Length == 0)
+        // Get object files based on source files that the module created
+        var objectFiles = new List<string>();
+        var objectDir = GetObjectOutputFolder();
+        
+        foreach (var sourceFile in CurrentModule.SourceFiles)
         {
-            // Try .obj extension (for compatibility with MSVC style naming)
-            objectFiles = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var objectFile = Path.Combine(objectDir, $"{fileName}.obj");
+            if (File.Exists(objectFile))
+            {
+                objectFiles.Add(objectFile);
+            }
+        }
+        
+        if (objectFiles.Count == 0)
+        {
+            Logger.LogError("No object files found for linking");
+            return string.Empty;
         }
         
         // Add module type specific flags and output first, then common arguments
@@ -318,7 +330,7 @@ public class GccLinker : LinkerBase
         return args.ToString();
     }
 
-    private string BuildArchiveCommand(string[] objectFiles)
+    private string BuildArchiveCommand(List<string> objectFiles)
     {
         if (CurrentModule == null) throw new NullReferenceException("CurrentModule is null");
 
