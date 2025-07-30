@@ -10,15 +10,16 @@ using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
 
-[Compiler("Gcc")]
-public class GccCompiler : CompilerBase
+[Compiler("Gpp")]
+public class GppCompiler : CompilerBase
 {
-    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("GCC Compiler");
+    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("G++ Compiler");
 
-    // Regex for parsing GCC output messages
+    // Regex for parsing G++ output messages
     // Format: file.cpp:line:column: error/warning: message
-    private static readonly Regex GccMessageRegex = new(@"^(?<file>.*):(?<line>\d+):(?<column>\d+): (?<type>error|warning|note): (?<message>.*)$");
+    private static readonly Regex GppMessageRegex = new(@"^(?<file>.*):(?<line>\d+):(?<column>\d+): (?<type>error|warning|note): (?<message>.*)$");
 
+    private string _gppPath = string.Empty;
     private string _gccPath = string.Empty;
 
     public override LinkerBase GetDefaultLinker()
@@ -32,12 +33,12 @@ public class GccCompiler : CompilerBase
         if (platform.GetName() != "Unix")
             return false;
             
-        // Check if gcc is actually available on the system
+        // Check if g++ is actually available on the system
         try
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "gcc",
+                FileName = "g++",
                 Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -54,7 +55,7 @@ public class GccCompiler : CompilerBase
         }
         catch
         {
-            // gcc not found or not executable
+            // g++ not found or not executable
         }
         
         return false;
@@ -99,7 +100,7 @@ public class GccCompiler : CompilerBase
             var jsonEntries = CurrentModule.SourceFiles.Select(source => new JsonObject
             {
                 { "directory", CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory() },
-                { "command", $"{_gccPath} {command} -c \"{GetModuleFilePath(source, CurrentModule)}\"" },
+                { "command", $"{GetCompilerPath()} {command} -c \"{GetModuleFilePath(source, CurrentModule)}\"" },
                 { "file", GetModuleFilePath(source, CurrentModule) }
             });
             
@@ -124,7 +125,29 @@ public class GccCompiler : CompilerBase
 
     public override async Task<bool> Setup()
     {
-        // Try to find gcc in common locations
+        bool foundGpp = false;
+        bool foundGcc = false;
+
+        // Try to find g++ in common locations
+        var gppPaths = new[]
+        {
+            "/usr/bin/g++",
+            "/usr/local/bin/g++",
+            "/bin/g++"
+        };
+
+        foreach (var path in gppPaths)
+        {
+            if (File.Exists(path))
+            {
+                _gppPath = path;
+                Logger.LogInformation("Found G++ at: {path}", path);
+                foundGpp = true;
+                break;
+            }
+        }
+
+        // Try to find gcc in common locations for C projects
         var gccPaths = new[]
         {
             "/usr/bin/gcc",
@@ -138,44 +161,88 @@ public class GccCompiler : CompilerBase
             {
                 _gccPath = path;
                 Logger.LogInformation("Found GCC at: {path}", path);
-                return true;
+                foundGcc = true;
+                break;
             }
         }
 
-        // Try to find gcc in PATH
-        try
+        // If not found in common locations, try PATH
+        if (!foundGpp)
         {
-            var startInfo = new ProcessStartInfo
+            try
             {
-                FileName = "which",
-                Arguments = "gcc",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            var process = Process.Start(startInfo);
-            if (process != null)
-            {
-                var output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-                
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                var startInfo = new ProcessStartInfo
                 {
-                    _gccPath = output.Trim();
-                    Logger.LogInformation("Found GCC in PATH: {path}", _gccPath);
-                    return true;
+                    FileName = "which",
+                    Arguments = "g++",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+                    
+                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    {
+                        _gppPath = output.Trim();
+                        Logger.LogInformation("Found G++ in PATH: {path}", _gppPath);
+                        foundGpp = true;
+                    }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning("Could not locate gcc using 'which' command: {message}", ex.Message);
+            catch (Exception ex)
+            {
+                Logger.LogWarning("Could not locate g++ using 'which' command: {message}", ex.Message);
+            }
         }
 
-        Logger.LogError("GCC compiler not found");
-        return false;
+        if (!foundGcc)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "which",
+                    Arguments = "gcc",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+                    
+                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    {
+                        _gccPath = output.Trim();
+                        Logger.LogInformation("Found GCC in PATH: {path}", _gccPath);
+                        foundGcc = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("Could not locate gcc using 'which' command: {message}", ex.Message);
+            }
+        }
+
+        // We need at least one compiler (prefer g++ for C++ projects)
+        if (!foundGpp && !foundGcc)
+        {
+            Logger.LogError("Neither G++ nor GCC compiler found");
+            return false;
+        }
+
+        return true;
     }
 
     private string GenerateCompileCommand(bool includeSourceFiles)
@@ -323,9 +390,9 @@ public class GccCompiler : CompilerBase
             return false;
         }
 
-        if (string.IsNullOrEmpty(_gccPath))
+        if (string.IsNullOrEmpty(GetCompilerPath()))
         {
-            Logger.LogError("GCC compiler path not set");
+            Logger.LogError("Compiler path not set");
             return false;
         }
 
@@ -399,7 +466,7 @@ public class GccCompiler : CompilerBase
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = _gccPath,
+                FileName = GetCompilerPath(),
                 Arguments = $"@{commandFilePath}", // Use command file
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -408,7 +475,7 @@ public class GccCompiler : CompilerBase
                 WorkingDirectory = CurrentModule.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory()
             };
 
-            Logger.LogInformation("Executing: {command} @{commandFile}", _gccPath, commandFilePath);
+            Logger.LogInformation("Executing: {command} @{commandFile}", GetCompilerPath(), commandFilePath);
             Logger.LogDebug("Command file content: {content}", commandContent);
 
             var process = Process.Start(startInfo);
@@ -423,7 +490,7 @@ public class GccCompiler : CompilerBase
             {
                 if (args.Data != null)
                 {
-                    ParseGccOutput(args.Data);
+                    ParseGppOutput(args.Data);
                 }
             };
 
@@ -431,7 +498,7 @@ public class GccCompiler : CompilerBase
             {
                 if (args.Data != null)
                 {
-                    ParseGccOutput(args.Data);
+                    ParseGppOutput(args.Data);
                 }
             };
 
@@ -465,12 +532,12 @@ public class GccCompiler : CompilerBase
     }
 
 
-    private void ParseGccOutput(string output)
+    private void ParseGppOutput(string output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return;
 
-        var match = GccMessageRegex.Match(output);
+        var match = GppMessageRegex.Match(output);
         if (match.Success)
         {
             var file = match.Groups["file"].Value;
@@ -523,7 +590,7 @@ public class GccCompiler : CompilerBase
 
     public override string GetExecutablePath()
     {
-        return _gccPath;
+        return GetCompilerPath();
     }
 
     private string GetBinaryOutputFolder()
@@ -532,5 +599,26 @@ public class GccCompiler : CompilerBase
             throw new NullReferenceException("CurrentModule is null.");
         
         return CurrentModule.GetBinaryOutputDirectory();
+    }
+
+    private string GetCompilerPath()
+    {
+        if (CurrentModule?.CStandard.HasValue == true)
+        {
+            // Use GCC for C projects
+            if (!string.IsNullOrEmpty(_gccPath))
+            {
+                return _gccPath;
+            }
+        }
+        
+        // Use G++ for C++ projects (default)
+        if (!string.IsNullOrEmpty(_gppPath))
+        {
+            return _gppPath;
+        }
+        
+        // Fallback to GCC if G++ not available
+        return _gccPath;
     }
 }

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.Linkers;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
@@ -30,40 +31,7 @@ public class MsvcCompiler : CompilerBase
             }))
             .CreateLogger("MSVC Compiler");
 
-    private static string GetVsWhereDirectory()
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Join(localAppData, "ebuild", "compilers", "msvc", "vswhere");
-    }
 
-    private bool VswhereExists()
-    {
-        var vsWhereHash = "C54F3B7C9164EA9A0DB8641E81ECDDA80C2664EF5A47C4191406F848CC07C662";
-        var vsWhereExec = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
-        if (!File.Exists(vsWhereExec))
-            return false;
-        using var shaHasher = SHA256.Create();
-        using var fs = File.Open(vsWhereExec, FileMode.Open);
-        var hash = shaHasher.ComputeHash(fs);
-        var stringBuilder = new StringBuilder();
-
-        foreach (var b in hash)
-            stringBuilder.AppendFormat("{0:X2}", b);
-        var hashString = stringBuilder.ToString();
-        return hashString == vsWhereHash;
-    }
-
-    private const string VsWhereUrl = "https://github.com/microsoft/vswhere/releases/download/3.1.7/vswhere.exe";
-
-    string GetObjectOutputFolder()
-    {
-        if (CurrentModule == null)
-            throw new NullReferenceException("CurrentModule is null.");
-        if (CurrentModule.UseVariants)
-            return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", CurrentModule.GetVariantId().ToString(), "obj") + Path.DirectorySeparatorChar;
-        return Path.Join(CurrentModule!.Context.ModuleDirectory!.FullName, ".ebuild", ((ModuleFile)CurrentModule.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
-    }
-    string GetObjectPdbFolder() => GetObjectOutputFolder();
 
     string GetBinaryOutputFolder()
     {
@@ -71,41 +39,6 @@ public class MsvcCompiler : CompilerBase
             throw new NullReferenceException("CurrentModule is null.");
         return CurrentModule.GetBinaryOutputDirectory();
     }
-
-    bool DownloadVsWhere()
-    {
-        HttpClient client = new HttpClient();
-        byte[] vswhereBytes;
-        try
-        {
-            var job = client.GetByteArrayAsync(VsWhereUrl);
-            job.Wait();
-            if (!job.IsCompletedSuccessfully)
-                return false;
-            vswhereBytes = job.Result;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-
-        var pathSegments = VsWhereUrl.Split("/");
-        var version = pathSegments[pathSegments.Length - 1 - 1];
-        var vswhereDirectory = GetVsWhereDirectory();
-        Directory.CreateDirectory(vswhereDirectory);
-        var versionFile = File.Create(Path.Join(vswhereDirectory, "VERSION"));
-        TextWriter writer = new StreamWriter(versionFile, Encoding.UTF8);
-        writer.Write(version);
-        writer.Close();
-        writer.Dispose();
-        versionFile.Close();
-        var vswhereFile = File.Create(Path.Join(vswhereDirectory, "vswhere.exe"));
-        vswhereFile.Write(vswhereBytes);
-        vswhereFile.Close();
-        vswhereFile.Dispose();
-        return true;
-    }
-
 
     public override string GetExecutablePath()
     {
@@ -204,7 +137,7 @@ public class MsvcCompiler : CompilerBase
         {
             OptimizationLevel.None => "/Od",
             OptimizationLevel.Size => "/O1",
-            OptimizationLevel.Speed => "/O2", 
+            OptimizationLevel.Speed => "/O2",
             OptimizationLevel.Max => "/Ox",
             _ => "/O2" // Default to speed optimization
         };
@@ -238,7 +171,7 @@ public class MsvcCompiler : CompilerBase
         {
             args += "/MDd";
             args += "/Zi";
-            args += $"/Fd\"{Path.Join(GetObjectPdbFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
+            args += $"/Fd\"{Path.Join(CompilerUtils.GetObjectOutputFolder(CurrentModule), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
             args += "/FS";
             args += OptimizationLevelToArg(OptimizationLevel.None); // No optimization in debug
         }
@@ -247,11 +180,14 @@ public class MsvcCompiler : CompilerBase
             args += "/MD";
             args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
         }
-        args += $"/Fo:";
-        Directory.CreateDirectory(GetObjectOutputFolder());
-        args += GetObjectOutputFolder();
+        if (bSourceFiles)
+        {
+            args += $"/Fo:";
+            Directory.CreateDirectory(CompilerUtils.GetObjectOutputFolder(CurrentModule));
+            args += CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        }
 
-        if (ProcessCount != null)
+        if (ProcessCount != null && bSourceFiles)
         {
             args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
         }
@@ -282,37 +218,22 @@ public class MsvcCompiler : CompilerBase
 
     public override async Task<bool> Setup()
     {
-        if (!VswhereExists())
+        if (!MSVCUtils.VswhereExists())
         {
-            if (!DownloadVsWhere())
+            if (!MSVCUtils.DownloadVsWhere())
             {
                 throw new Exception(
-                    $"Can't download vswhere from {VsWhereUrl}. Please check your internet connection.");
+                    $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
             }
         }
 
-        var toolRoot = Config.Get().MsvcPath ?? string.Empty;
+        var toolRoot = await MSVCUtils.GetMsvcToolRoot();
+
         if (string.IsNullOrEmpty(toolRoot))
         {
-            var vsWhereExecutable = Path.Join(GetVsWhereDirectory(), "vswhere.exe");
-            const string args =
-                "-latest -products * -requires \"Microsoft.VisualStudio.Component.VC.CoreBuildTools\" -property installationPath";
-            var vsWhereProcess = new Process();
-            var processStartInfo = new ProcessStartInfo
-            {
-                Arguments = args,
-                FileName = vsWhereExecutable,
-                RedirectStandardOutput = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            vsWhereProcess.StartInfo = processStartInfo;
-            vsWhereProcess.Start();
-            toolRoot = await vsWhereProcess.StandardOutput.ReadToEndAsync();
-            await vsWhereProcess.WaitForExitAsync();
+            Logger.LogInformation("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
+            return false;
         }
-
-        toolRoot = toolRoot.Trim();
 
 
         var version = Config.Get().MsvcVersion ?? string.Empty;
@@ -329,14 +250,21 @@ public class MsvcCompiler : CompilerBase
             foreach (var file in Directory.GetFiles(Path.Join(toolRoot, "VC",
                          "Auxiliary", "Build"), "Microsoft.VCToolsVersion.*default.txt"))
             {
-                var content = await File.ReadAllTextAsync(file);
-                if (Version.TryParse(content, out var foundVer))
+                try
                 {
-                    versionDict.Add(foundVer, content);
-                    using (Logger.BeginScope("Version Discovery"))
+                    var content = await File.ReadAllTextAsync(file);
+                    if (Version.TryParse(content, out var foundVer))
                     {
-                        Logger.LogInformation("Found version: {content}", content);
+                        versionDict.Add(foundVer, content);
+                        using (Logger.BeginScope("Version Discovery"))
+                        {
+                            Logger.LogInformation("Found version: {content}", content);
+                        }
                     }
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError(e, "Failed to read version file: {file}", file);
                 }
             }
 
@@ -364,7 +292,6 @@ public class MsvcCompiler : CompilerBase
 
     public override async Task<bool> Compile()
     {
-
         if (CurrentModule == null) return false;
         Logger.LogInformation("Compiling module {moduleName}", CurrentModule.Name);
         foreach (var dependency in CurrentModule.Dependencies.Joined())
@@ -375,137 +302,153 @@ public class MsvcCompiler : CompilerBase
         }
         MutateTarget();
 
-        var commandFileContent = GenerateCompileCommand(true);
-        //TODO: Remove this
-        Logger.LogInformation(commandFileContent);
-        var commandFilePath = Path.GetTempFileName();
-        await using (var commandFile = File.OpenWrite(commandFilePath))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(commandFileContent);
-            await writer.FlushAsync();
-            commandFile.Flush();
-        }
-
         if (CleanCompilation)
         {
             //Delete all obj files before compiling
             ClearObjectAndPdbFiles(false);
         }
 
-        var startInfo = new ProcessStartInfo()
+        // Compile each source file individually
+        var sourceFiles = CurrentModule.SourceFiles;
+        if (sourceFiles.Count == 0)
         {
-            WorkingDirectory = Directory.GetCurrentDirectory(),
-            Arguments = $"@\"{commandFilePath}\"",
-            FileName = GetExecutablePath(),
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            CreateNoWindow = true,
-            UseShellExecute = false,
-        };
-        var proc = Process.Start(startInfo);
-        if (proc == null)
-        {
-            Logger.LogError("Can't start cl.exe");
-            Environment.ExitCode = 1;
-            return false;
+            Logger.LogWarning("No source files to compile");
+            return true;
         }
 
-        proc.OutputDataReceived += (_, args) =>
+        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        Directory.CreateDirectory(outputDir);
+
+        var errorFiles = new List<string>();
+
+        // Compile each source file individually
+        foreach (var sourceFile in sourceFiles)
         {
-            if (args.Data != null)
+            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
+            var objectFile = Path.Combine(outputDir, $"{fileName}.obj");
+
+            // Generate compile command for this specific source file
+            var commandContent = GenerateCompileCommand(false); // Don't include all source files
+            commandContent += $" \"{GetModuleFilePath(sourceFile, CurrentModule)}\""; // Add this specific source file
+            commandContent += $" /Fo\"{objectFile}\""; // Add specific output file
+
+            // Write command to a temporary file to avoid command length limits
+            var commandFilePath = Path.GetTempFileName();
+            await File.WriteAllTextAsync(commandFilePath, commandContent);
+
+            var startInfo = new ProcessStartInfo()
             {
-                var match = CLMessageRegex.Match(args.Data);
-                var type = match.Groups["type"].Value;
-                var code = match.Groups["code"].Value;
-                var message = match.Groups["message"].Value;
-                var file = match.Groups["file"].Value;
-                var location = match.Groups["location"].Value;
-                if (type == "error")
+                WorkingDirectory = Directory.GetCurrentDirectory(),
+                Arguments = $"@\"{commandFilePath}\"",
+                FileName = GetExecutablePath(),
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            };
+
+            Logger.LogInformation("Compiling: {sourceFile}", sourceFile);
+            Logger.LogDebug("Command file content: {content}", commandContent);
+
+            var proc = Process.Start(startInfo);
+            if (proc == null)
+            {
+                Logger.LogError("Can't start cl.exe");
+                Environment.ExitCode = 1;
+                return false;
+            }
+
+            proc.OutputDataReceived += (_, args) =>
+            {
+                if (args.Data != null)
                 {
-                    Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    var match = CLMessageRegex.Match(args.Data);
+                    var type = match.Groups["type"].Value;
+                    var code = match.Groups["code"].Value;
+                    var message = match.Groups["message"].Value;
+                    var file = match.Groups["file"].Value;
+                    var location = match.Groups["location"].Value;
+                    if (type == "error")
+                    {
+                        Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    }
+                    else if (type == "warning")
+                    {
+                        Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    }
+                    else if (type == "note")
+                    {
+                        Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
+                    }
+                    else
+                    {
+                        Logger.LogInformation("{data}", args.Data);
+                    }
                 }
-                else if (type == "warning")
+            };
+            proc.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data != null) Logger.LogError("{data}", args.Data);
+            };
+            proc.Start();
+            proc.BeginErrorReadLine();
+            proc.BeginOutputReadLine();
+            await proc.WaitForExitAsync();
+
+            // Clean up command file
+            if (File.Exists(commandFilePath))
+            {
+                try
                 {
-                    Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                    File.Delete(commandFilePath);
                 }
-                else if (type == "note")
+                catch (Exception ex)
                 {
-                    Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
+                    Logger.LogWarning("Failed to delete command file {file}: {error}", commandFilePath, ex.Message);
                 }
-                else
-                {
-                    Logger.LogInformation("{data}", args.Data);
-                }
+            }
+
+            if (proc.ExitCode != 0)
+            {
+                Logger.LogError("Compilation Failed for {sourceFile}, {exitCode}", sourceFile, proc.ExitCode);
+                errorFiles.Add(sourceFile);
 
             }
-        };
-        proc.ErrorDataReceived += (_, args) =>
+        }
+        if (errorFiles.Count > 0)
         {
-            if (args.Data != null) Logger.LogError("{data}", args.Data);
-        };
-        proc.Start();
-        proc.BeginErrorReadLine();
-        proc.BeginOutputReadLine();
-        await proc.WaitForExitAsync();
-
-        if (File.Exists(commandFilePath))
-            File.Delete(commandFilePath);
-        if (proc.ExitCode != 0)
-        {
-            Logger.LogError("Compilation Failed, {exitCode}", proc.ExitCode);
+            Logger.LogError("Compilation failed for the following files: {files}", string.Join(", ", errorFiles));
             if (CleanCompilation)
             {
                 ClearObjectAndPdbFiles();
             }
-
+            Environment.ExitCode = 1;
             return false;
         }
+        // Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
 
-        Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
-        switch (CurrentModule.Type)
+        // Use the linker if available, otherwise use default linker
+        bool linkingSuccess = true;
+        var linker = Linker ?? GetDefaultLinker();
+        await linker.Setup();
+        linker.SetModule(CurrentModule);
+        linkingSuccess = await linker.Link();
+
+        if (linkingSuccess)
         {
-            case ModuleType.StaticLibrary:
-                {
-                    await CallLibExe();
-                    break;
-                }
-            case ModuleType.SharedLibrary:
-            case ModuleType.Executable:
-            case ModuleType.ExecutableWin32:
-                {
-                    await CallLinkExe();
-                    break;
-                }
-            default:
-                throw new ArgumentOutOfRangeException();
+            ProcessAdditionalDependencies();
         }
 
-        ProcessAdditionalDependencies();
-        return true;
+        return linkingSuccess;
     }
 
     private void ClearObjectAndPdbFiles(bool shouldLog = true)
     {
-        List<string> files =
-        [
-            .. Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly),
-            .. Directory.GetFiles(GetObjectPdbFolder(), "*.pdb", SearchOption.TopDirectoryOnly),
-        ];
-        foreach (var file in files)
+        if (CurrentModule != null)
         {
-            if (shouldLog)
-                Logger.LogDebug("Compilation file {file} is being removed", file);
-            try
-            {
-                File.Delete(Path.GetFullPath(file));
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
+            CompilerUtils.ClearObjectAndPdbFiles(CurrentModule, shouldLog);
         }
     }
 
@@ -517,235 +460,6 @@ public class MsvcCompiler : CompilerBase
             additionalDependency.Process(CurrentModule);
         }
     }
-
-    private async Task CallLinkExe()
-    {
-        if (CurrentModule == null)
-            return;
-        Logger.LogInformation("Linking program");
-        ArgumentBuilder argumentBuilder = new();
-        var linkExe = Path.Join(GetMsvcCompilerBin(), "link.exe");
-        var files = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
-        files = [.. files.Select(f => GetModuleFilePath(f, CurrentModule))];
-        // ReSharper disable once StringLiteralTypo
-        argumentBuilder += "/nologo";
-        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
-        {
-            argumentBuilder += "/DEBUG";
-            // example: /PDB:"C:\Users\user\module_1\Binaries\<variant_id>\module_1.pdb"
-            argumentBuilder += $"/PDB:{Path.Join(GetBinaryOutputFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb";
-        }
-
-        argumentBuilder += AdditionalLinkerOptions;
-
-        var outType = ".exe";
-        switch (CurrentModule.Type)
-        {
-            case ModuleType.ExecutableWin32:
-                argumentBuilder += "/SUBSYSTEM:WINDOWS";
-                break;
-            case ModuleType.Executable:
-                argumentBuilder += "/SUBSYSTEM:CONSOLE";
-                break;
-            case ModuleType.SharedLibrary:
-                argumentBuilder += "/DLL";
-                outType = ".dll";
-                break;
-            case ModuleType.StaticLibrary:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
-        // Make sure the output directory exists.
-        Directory.CreateDirectory(GetBinaryOutputFolder());
-        argumentBuilder +=
-            $"/OUT:\"{Path.Join(GetBinaryOutputFolder(),
-               (CurrentModule.Name ?? CurrentModule.GetType().Name) + outType)}\"";
-
-        // Add the library search paths for current module and the dependencies.
-        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined()
-            .Select(current => $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
-        var depTree = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName).GetDependencyTree();
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            argumentBuilder +=
-                dependency.GetCompiledModule()!.LibrarySearchPaths.Public.Select(current =>
-                    $"/LIBPATH:\"{Path.GetFullPath(current)}\"");
-        }
-        // Add the output files for current module.
-        argumentBuilder += files;
-
-        // Add the output file of the dependencies.
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            var compModule = dependency.GetCompiledModule()!;
-            switch (compModule.Type)
-            {
-                case ModuleType.Executable:
-                case ModuleType.ExecutableWin32:
-                    // No need to add the executable files. And they shouldn't even be referenced.
-                    throw new NotImplementedException("Executable modules are not supported as dependencies.");
-                case ModuleType.SharedLibrary:
-                    File.Copy(Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.dll"), Path.Combine(GetBinaryOutputFolder(), $"{CurrentModule.Name}.dll"), true); // copy the dll to the output directory.
-                    argumentBuilder += Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.lib"); // link the library
-                    break;
-                case ModuleType.StaticLibrary:
-                    argumentBuilder += Path.Combine(compModule.GetBinaryOutputDirectory(), $"{compModule.Name}.lib"); // link the library
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        // Add the libraries for current module and the dependencies.
-        argumentBuilder += CurrentModule.Libraries.Joined()
-            .Select((a) => File.Exists(Path.GetFullPath(a)) ? Path.GetFullPath(a) : a);
-        foreach (var dependency in depTree.GetFirstLevelAndPublicDependencies())
-        {
-            argumentBuilder += dependency.GetCompiledModule()!.Libraries.Public
-                .Select((a) =>
-                {
-                    var shorterPath = GetModuleFilePath(a, dependency.GetCompiledModule()!);
-                    return File.Exists(shorterPath) ? shorterPath : a;
-                });
-        }
-
-        var tempFile = Path.GetTempFileName();
-        var argumentString = argumentBuilder.ToString();
-        await using (var commandFile = File.OpenWrite(tempFile))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(argumentString);
-        }
-
-        using (Logger.BeginScope("Link"))
-        {
-            Logger.LogInformation("Launching link.exe with command file content {commandFileContent}", argumentString);
-            var p = new ProcessStartInfo()
-            {
-                Arguments = $"@\"{tempFile}\"",
-                FileName = linkExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = CurrentModule.Context.ModuleDirectory!.FullName,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            var process = new Process();
-            process.StartInfo = p;
-            process.OutputDataReceived += (_, args) =>
-            {
-                //TODO: change the parsing method. Maybe regex.
-                if (args.Data == null) return;
-                var splitData = args.Data.Split(":");
-                if (splitData.Length <= 2) return;
-                var errorWords = new[] { "error", "fatal error" };
-                var warningWords = new[] { "warning" };
-                if (errorWords.Any(word => splitData[1].Trim().StartsWith(word)))
-                {
-                    Logger.LogError("{data}", args.Data);
-                    return;
-                }
-
-                if (warningWords.Any(word => splitData[1].Trim().StartsWith(word)))
-                {
-                    Logger.LogWarning("{data}", args.Data);
-                    return;
-                }
-
-                Logger.LogInformation("{data}", args.Data);
-            };
-            process.ErrorDataReceived += (_, args) =>
-            {
-                if (args.Data != null) Logger.LogError("{data}", args.Data);
-            };
-            process.Start();
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                Logger.LogError("link failed, exit code: {exitCode}", process.ExitCode);
-                Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
-                return;
-            }
-
-            Directory.SetCurrentDirectory(new DirectoryInfo(Directory.GetCurrentDirectory()).Parent!.FullName);
-        }
-    }
-
-    private async Task CallLibExe()
-    {
-        if (CurrentModule == null)
-            return;
-        var libExe = Path.Join(GetMsvcCompilerBin(), "lib.exe");
-        var files = Directory.GetFiles(GetObjectOutputFolder(), "*.obj", SearchOption.TopDirectoryOnly);
-        //TODO: add files from the dependencies.
-        Directory.CreateDirectory(Path.Join(GetBinaryOutputFolder(), "lib"));
-        // ReSharper disable once StringLiteralTypo
-        ArgumentBuilder argumentBuilder = new();
-        argumentBuilder += "/nologo";
-        if (CurrentModule.Type == ModuleType.SharedLibrary)
-        {
-            argumentBuilder += "/DLL";
-        }
-
-        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
-        {
-            argumentBuilder += "/DEBUG";
-            argumentBuilder += $"/PDB:\"{Path.Join(GetBinaryOutputFolder(), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
-        }
-
-        argumentBuilder +=
-            $"/OUT:\"{Path.Join(GetBinaryOutputFolder(), "lib", (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\"";
-        argumentBuilder += AdditionalLinkerOptions;
-        argumentBuilder += CurrentModule.LibrarySearchPaths.Joined().Select(s => $"/LIBPATH:\"{s}\"");
-        argumentBuilder += files.Select(f => GetModuleFilePath(f, CurrentModule));
-        argumentBuilder += CurrentModule.Libraries.Joined()
-            .Select(s => File.Exists(Path.GetFullPath(s)) ? Path.GetFullPath(s) : s);
-
-        var tempFile = Path.GetTempFileName();
-        var argumentContents = argumentBuilder.ToString();
-        await using (var commandFile = File.OpenWrite(tempFile))
-        {
-            await using var writer = new StreamWriter(commandFile);
-            await writer.WriteAsync(argumentContents);
-        }
-
-        using (Logger.BeginScope("Lib"))
-        {
-            Logger.LogDebug("Launching lib.exe with command file content {libCommandFileContent}",
-                argumentContents);
-            var p = new ProcessStartInfo()
-            {
-                Arguments = $"@\"{tempFile}\"",
-                FileName = libExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = CurrentModule.Context.ModuleDirectory!.FullName,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            var process = new Process();
-            process.StartInfo = p;
-            process.OutputDataReceived += (_, args) => Logger.LogInformation("{data}", args.Data);
-            process.Start();
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                Logger.LogError("LIB.exe failed, exit code: {exitCode}", process.ExitCode);
-                Environment.ExitCode = -1;
-                return;
-            }
-        }
-    }
-
 
     public override async Task<bool> Generate(string what, Object? data = null)
     {
@@ -801,6 +515,11 @@ public class MsvcCompiler : CompilerBase
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         WriteIndented = true
     };
+
+    public override LinkerBase GetDefaultLinker()
+    {
+        return LinkerRegistry.GetInstance().Get<MsvcLinkLinker>();
+    }
 
     public override bool IsAvailable(PlatformBase platform)
     {

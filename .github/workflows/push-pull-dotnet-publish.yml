@@ -15,21 +15,27 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 
+    - name: Setup MSVC
+      uses: aminya/setup-cpp@v1
+      with:
+        msvc: true
+        cmake: true
+        ninja: true
     - name: Restore dependencies
-      run: dotnet restore ebuild.sln
+      run: msbuild ebuild.sln /t:Restore /p:Configuration=Release /p:Platform="Any CPU"
 
     - name: Build solution
-      run: dotnet build ebuild.sln --configuration Release --no-restore
+      run: dotnet build ebuild.sln --configuration Release --no-restore --property:Platform="Any CPU"
 
     - name: Run tests
-      run: dotnet test ebuild.sln --configuration Release --no-build
+      run: dotnet test ebuild.sln --configuration Release --no-build --property:Platform="Any CPU"
 
     - name: Publish artifacts
       run: dotnet publish ebuild/ebuild.csproj --configuration Release --output ./publish
@@ -45,10 +51,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 

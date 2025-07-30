@@ -7,3 +7,16 @@ riderModule.iml
 /_ReSharper.Caches/
 .ebuild/
 msbuild.binlog
+
+# Build artifacts
+examples/*/Binaries/
+examples/*/obj/
+examples/*/bin/
+*.a
+*.o
+*.exe
+*.dll
+*.lib
+*.pdb
+*.so
+*.dylib

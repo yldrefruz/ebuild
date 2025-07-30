@@ -7,3 +7,12 @@ public enum CppStandards
     Cpp20,
     CppLatest,
 }
+
+public enum CStandards
+{
+    C89,
+    C99,
+    C11,
+    C17,
+    C2x,
+}
