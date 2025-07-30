@@ -10,7 +10,7 @@ using ebuild.Platforms;
 using ebuild.Compilers;
 using ebuild.Linkers;
 
-namespace ebuild.Tests;
+namespace ebuild.Tests.Integration;
 
 [TestFixture]
 public class ZlibEbuildTests
