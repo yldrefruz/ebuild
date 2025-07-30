@@ -77,11 +77,22 @@ public class LinkerTests
         var platform = new UnixPlatform();
         
         if(PlatformRegistry.GetHostPlatform().GetType() == typeof(Win32Platform)){
+            // On Windows, GCC linker typically won't be available for Unix platform
+            // unless specifically installed (like MinGW)
+            // Act
+            var isAvailable = linker.IsAvailable(platform);
+        
+            // Assert - On Windows, we don't expect GCC to be available by default
+            Assert.That(isAvailable, Is.False, "GCC linker should not be available on Windows without MinGW");
+        }
+        else
+        {
+            // On Unix systems, GCC should be available
             // Act
             var isAvailable = linker.IsAvailable(platform);
         
             // Assert
-            Assert.That(isAvailable, Is.True);
+            Assert.That(isAvailable, Is.True, "GCC linker should be available on Unix systems");
         }
     }
 

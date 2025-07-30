@@ -183,8 +183,23 @@ public class MsvcCompiler : CompilerBase
         if (bSourceFiles)
         {
             args += $"/Fo:";
-            Directory.CreateDirectory(CompilerUtils.GetObjectOutputFolder(CurrentModule));
-            args += CompilerUtils.GetObjectOutputFolder(CurrentModule);
+            var objectOutputFolder = CompilerUtils.GetObjectOutputFolder(CurrentModule);
+            
+            // Ensure the directory exists before MSVC tries to use it
+            try
+            {
+                if (!Directory.Exists(objectOutputFolder))
+                {
+                    Directory.CreateDirectory(objectOutputFolder);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Failed to create object output folder {folder}: {error}", objectOutputFolder, ex.Message);
+                throw;
+            }
+            
+            args += objectOutputFolder;
         }
 
         if (ProcessCount != null && bSourceFiles)
@@ -317,106 +332,41 @@ public class MsvcCompiler : CompilerBase
         }
 
         var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
-        Directory.CreateDirectory(outputDir);
+        
+        // Ensure the output directory exists with proper permissions
+        try
+        {
+            if (!Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+                Logger.LogInformation("Created object output directory: {outputDir}", outputDir);
+            }
+            
+            // Test write access to the directory
+            var testFile = Path.Combine(outputDir, "test_write_access.tmp");
+            File.WriteAllText(testFile, "test");
+            File.Delete(testFile);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Failed to create or access output directory {outputDir}: {error}", outputDir, ex.Message);
+            throw new InvalidOperationException($"Cannot create or access output directory: {outputDir}", ex);
+        }
 
         var errorFiles = new List<string>();
 
-        // Compile each source file individually
+        // Compile each source file individually with antivirus-safe waiting
+        Logger.LogInformation("Compiling {count} source files individually", sourceFiles.Count);
+        
         foreach (var sourceFile in sourceFiles)
         {
-            var fileName = Path.GetFileNameWithoutExtension(sourceFile);
-            var objectFile = Path.Combine(outputDir, $"{fileName}.obj");
-
-            // Generate compile command for this specific source file
-            var commandContent = GenerateCompileCommand(false); // Don't include all source files
-            commandContent += $" \"{GetModuleFilePath(sourceFile, CurrentModule)}\""; // Add this specific source file
-            commandContent += $" /Fo\"{objectFile}\""; // Add specific output file
-
-            // Write command to a temporary file to avoid command length limits
-            var commandFilePath = Path.GetTempFileName();
-            await File.WriteAllTextAsync(commandFilePath, commandContent);
-
-            var startInfo = new ProcessStartInfo()
+            var success = await CompileSourceFileIndividually(sourceFile);
+            if (!success)
             {
-                WorkingDirectory = Directory.GetCurrentDirectory(),
-                Arguments = $"@\"{commandFilePath}\"",
-                FileName = GetExecutablePath(),
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                CreateNoWindow = true,
-                UseShellExecute = false,
-            };
-
-            Logger.LogInformation("Compiling: {sourceFile}", sourceFile);
-            Logger.LogDebug("Command file content: {content}", commandContent);
-
-            var proc = Process.Start(startInfo);
-            if (proc == null)
-            {
-                Logger.LogError("Can't start cl.exe");
-                Environment.ExitCode = 1;
-                return false;
-            }
-
-            proc.OutputDataReceived += (_, args) =>
-            {
-                if (args.Data != null)
-                {
-                    var match = CLMessageRegex.Match(args.Data);
-                    var type = match.Groups["type"].Value;
-                    var code = match.Groups["code"].Value;
-                    var message = match.Groups["message"].Value;
-                    var file = match.Groups["file"].Value;
-                    var location = match.Groups["location"].Value;
-                    if (type == "error")
-                    {
-                        Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
-                    }
-                    else if (type == "warning")
-                    {
-                        Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
-                    }
-                    else if (type == "note")
-                    {
-                        Logger.LogWarning("{file}({location}): {type}: {message}", file, location, type, message);
-                    }
-                    else
-                    {
-                        Logger.LogInformation("{data}", args.Data);
-                    }
-                }
-            };
-            proc.ErrorDataReceived += (_, args) =>
-            {
-                if (args.Data != null) Logger.LogError("{data}", args.Data);
-            };
-            proc.Start();
-            proc.BeginErrorReadLine();
-            proc.BeginOutputReadLine();
-            await proc.WaitForExitAsync();
-
-            // Clean up command file
-            if (File.Exists(commandFilePath))
-            {
-                try
-                {
-                    File.Delete(commandFilePath);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning("Failed to delete command file {file}: {error}", commandFilePath, ex.Message);
-                }
-            }
-
-            if (proc.ExitCode != 0)
-            {
-                Logger.LogError("Compilation Failed for {sourceFile}, {exitCode}", sourceFile, proc.ExitCode);
                 errorFiles.Add(sourceFile);
-
             }
         }
+        
         if (errorFiles.Count > 0)
         {
             Logger.LogError("Compilation failed for the following files: {files}", string.Join(", ", errorFiles));
@@ -427,6 +377,8 @@ public class MsvcCompiler : CompilerBase
             Environment.ExitCode = 1;
             return false;
         }
+        
+        Logger.LogInformation("Successfully compiled all {count} source files", sourceFiles.Count);
         // Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
 
         // Use the linker if available, otherwise use default linker
@@ -442,6 +394,158 @@ public class MsvcCompiler : CompilerBase
         }
 
         return linkingSuccess;
+    }
+
+    private async Task<bool> WaitForFileAccess(string filePath, int maxWaitSeconds)
+    {
+        if (maxWaitSeconds == 0)
+        {
+            return true; // No waiting
+        }
+
+        var startTime = DateTime.Now;
+        var isInfiniteWait = maxWaitSeconds == -1;
+        
+        while (true)
+        {
+            try
+            {
+                // Try to create and immediately delete a test file in the same directory
+                var testFilePath = Path.Combine(Path.GetDirectoryName(filePath) ?? ".", 
+                    $"ebuild_access_test_{Path.GetRandomFileName()}.tmp");
+                
+                File.WriteAllText(testFilePath, "test");
+                File.Delete(testFilePath);
+                
+                Logger.LogDebug("File access confirmed for directory: {dir}", Path.GetDirectoryName(filePath));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                var elapsed = (DateTime.Now - startTime).TotalSeconds;
+                
+                if (!isInfiniteWait && elapsed >= maxWaitSeconds)
+                {
+                    Logger.LogError("Timeout waiting for file access to {filePath} after {elapsed:F1} seconds. Last error: {error}", 
+                        filePath, elapsed, ex.Message);
+                    return false;
+                }
+                
+                Logger.LogDebug("Waiting for file access to {filePath} (elapsed: {elapsed:F1}s): {error}", 
+                    filePath, elapsed, ex.Message);
+                
+                await Task.Delay(500); // Wait 500ms before retrying
+            }
+        }
+    }
+
+    private async Task<bool> CompileSourceFileIndividually(string sourceFile)
+    {
+        if (CurrentModule == null) return false;
+
+        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
+        var objFileName = Path.GetFileNameWithoutExtension(sourceFile) + ".obj";
+        var objFilePath = Path.Combine(outputDir, objFileName);
+        
+        // Wait for file access if configured
+        var waitTime = Config.Get().WaitOutputFileMaxSeconds;
+        if (waitTime != 0)
+        {
+            Logger.LogDebug("Checking file access for {sourceFile}", sourceFile);
+            if (!await WaitForFileAccess(objFilePath, waitTime))
+            {
+                Logger.LogError("Failed to gain file access for {sourceFile}", sourceFile);
+                return false;
+            }
+        }
+
+        var commandContent = GenerateCompileCommand(true);
+        commandContent += $" \"{GetModuleFilePath(sourceFile, CurrentModule)}\"";
+
+        var tempFile = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempFile, commandContent);
+
+        var startInfo = new ProcessStartInfo()
+        {
+            WorkingDirectory = Directory.GetCurrentDirectory(),
+            Arguments = $"@\"{tempFile}\"",
+            FileName = GetExecutablePath(),
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+        };
+
+        Logger.LogDebug("Compiling {sourceFile}", Path.GetFileName(sourceFile));
+
+        using var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            Logger.LogError("Failed to start compiler process for {sourceFile}", sourceFile);
+            File.Delete(tempFile);
+            return false;
+        }
+
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        // Clean up temp file
+        File.Delete(tempFile);
+
+        if (process.ExitCode != 0)
+        {
+            Logger.LogError("Compilation failed for {sourceFile}:", sourceFile);
+            if (!string.IsNullOrEmpty(output))
+            {
+                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var match = CLMessageRegex.Match(line);
+                    if (match.Success)
+                    {
+                        var type = match.Groups["type"].Value;
+                        var code = match.Groups["code"].Value;
+                        var message = match.Groups["message"].Value;
+                        var file = match.Groups["file"].Value;
+                        var location = match.Groups["location"].Value;
+                        
+                        if (type == "error")
+                        {
+                            Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                        }
+                        else if (type == "warning")
+                        {
+                            Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                        }
+                        else
+                        {
+                            Logger.LogInformation("{line}", line);
+                        }
+                    }
+                    else
+                    {
+                        Logger.LogInformation("{line}", line);
+                    }
+                }
+            }
+            if (!string.IsNullOrEmpty(error))
+            {
+                Logger.LogError("Error output: {error}", error);
+            }
+            return false;
+        }
+
+        // Additional wait after successful compilation to ensure file is fully written
+        if (waitTime != 0)
+        {
+            await Task.Delay(100); // Brief delay to ensure file system sync
+        }
+
+        Logger.LogDebug("Successfully compiled {sourceFile}", Path.GetFileName(sourceFile));
+        return true;
     }
 
     private void ClearObjectAndPdbFiles(bool shouldLog = true)
@@ -518,7 +622,15 @@ public class MsvcCompiler : CompilerBase
 
     public override LinkerBase GetDefaultLinker()
     {
-        return LinkerRegistry.GetInstance().Get<MsvcLinkLinker>();
+        // Choose the appropriate MSVC linker based on module type
+        if (CurrentModule?.Type == ModuleType.StaticLibrary)
+        {
+            return LinkerRegistry.GetInstance().Get<MsvcLibLinker>();
+        }
+        else
+        {
+            return LinkerRegistry.GetInstance().Get<MsvcLinkLinker>();
+        }
     }
 
     public override bool IsAvailable(PlatformBase platform)

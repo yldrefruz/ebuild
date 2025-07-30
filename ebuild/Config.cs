@@ -49,6 +49,12 @@ public class Config
 
     public LogLevel MinLogLevel = LogLevel.Information;
     public LogLevel CheckCommandLogLevel = LogLevel.Information;
+    
+    /// <summary>
+    /// Maximum time to wait for output file availability and permissions.
+    /// -1 = infinite wait, 0 = no wait, positive number = wait that many seconds
+    /// </summary>
+    public int WaitOutputFileMaxSeconds = 10;
 
 
     /// <summary>

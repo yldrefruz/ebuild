@@ -317,7 +317,7 @@ public class ModuleFile : IModuleFile
         var psi = new ProcessStartInfo
         {
             WorkingDirectory = moduleProjectFileDir,
-            Arguments = $"new sln --name {Name}",
+            Arguments = $"new sln --name {Name}.ebuild_module",
             CreateNoWindow = true,
             FileName = "dotnet",
             UseShellExecute = false

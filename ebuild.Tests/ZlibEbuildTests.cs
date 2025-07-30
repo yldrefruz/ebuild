@@ -91,30 +91,52 @@ public class ZlibEbuildTests
         var objectFiles = Directory.GetFiles(buildDir, "*.obj", SearchOption.AllDirectories);
         Assert.That(objectFiles, Is.Not.Empty, "Should have compiled object files");
         
-        // Verify that the linker is available and properly registered
+        // Verify that the appropriate linker is available and properly registered
         var platform = PlatformRegistry.GetHostPlatform();
         LinkerBase linker;
-        try
+        
+        // Use the appropriate linker for the platform
+        if (platform.GetName() == "Win32")
         {
-            linker = LinkerRegistry.GetInstance().Get<GccLinker>();
+            try
+            {
+                linker = LinkerRegistry.GetInstance().Get<MsvcLibLinker>();
+            }
+            catch (KeyNotFoundException ex)
+            {
+                Assert.Fail($"MsvcLibLinker should be registered in LinkerRegistry. Error: {ex.Message}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"Failed to get MsvcLibLinker from registry: {ex.Message}");
+                return;
+            }
         }
-        catch (KeyNotFoundException ex)
+        else
         {
-            Assert.Fail($"GccLinker should be registered in LinkerRegistry. Error: {ex.Message}");
-            return;
-        }
-        catch (Exception ex)
-        {
-            Assert.Fail($"Failed to get GccLinker from registry: {ex.Message}");
-            return;
+            try
+            {
+                linker = LinkerRegistry.GetInstance().Get<GccLinker>();
+            }
+            catch (KeyNotFoundException ex)
+            {
+                Assert.Fail($"GccLinker should be registered in LinkerRegistry. Error: {ex.Message}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"Failed to get GccLinker from registry: {ex.Message}");
+                return;
+            }
         }
         
         // Verify that the linker is available on this platform
-        Assert.That(linker.IsAvailable(platform), Is.True, $"GccLinker should be available on {platform.GetName()} platform with GCC installed");
+        Assert.That(linker.IsAvailable(platform), Is.True, $"{linker.GetName()} should be available on {platform.GetName()} platform");
         
         // Setup the linker to ensure it's properly configured
         var linkerSetupSuccess = await linker.Setup();
-        Assert.That(linkerSetupSuccess, Is.True, "GccLinker setup should succeed");
+        Assert.That(linkerSetupSuccess, Is.True, $"{linker.GetName()} setup should succeed");
         
         // Check for static library files in the correct directory (Binaries)
         var binariesDir = Path.Combine(workingDirectory, "Binaries");
