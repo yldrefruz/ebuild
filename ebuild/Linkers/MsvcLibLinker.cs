@@ -35,50 +35,14 @@ public class MsvcLibLinker : LinkerBase
 
         var toolRoot = await MSVCUtils.GetMsvcToolRoot();
 
-        var version = Config.Get().MsvcVersion ?? string.Empty;
-        version = version.Trim();
-        if (!File.Exists(Path.Join(toolRoot, "VC", "Tools", "MSVC", version)))
-        {
-            Logger.LogInformation("(Config) => Msvc Version: {version} is not found, trying to find a valid version.",
-                string.IsNullOrEmpty(version) ? version : "<Empty>");
-        }
-
-        if (string.IsNullOrEmpty(version))
-        {
-            Dictionary<Version, string> versionDict = new();
-            foreach (var file in Directory.GetFiles(Path.Join(toolRoot, "VC",
-                         "Auxiliary", "Build"), "Microsoft.VCToolsVersion.*default.txt"))
-            {
-                var content = await File.ReadAllTextAsync(file);
-                if (Version.TryParse(content, out var foundVer))
-                {
-                    versionDict.Add(foundVer, content);
-                    using (Logger.BeginScope("Version Discovery"))
-                    {
-                        Logger.LogInformation("Found version: {content}", content);
-                    }
-                }
-            }
-
-            var latestVer = versionDict.Keys.ToList().OrderDescending().FirstOrDefault();
-            if (latestVer != null) version = versionDict[latestVer];
-        }
-
-        version = version.Trim();
+        var version = await MSVCUtils.FindMsvcVersion(toolRoot, Logger);
         if (string.IsNullOrEmpty(version))
         {
             Logger.LogCritical("Couldn't find a valid msvc installation.");
             return false;
         }
 
-        _msvcToolRoot = Path.Join(toolRoot, "VC", "Tools", "MSVC", version);
-        var host = "Hostx86";
-        if (Environment.Is64BitOperatingSystem)
-        {
-            host = "Hostx64";
-        }
-
-        _msvcCompilerRoot = Path.Join(_msvcToolRoot, "bin", host);
+        (_msvcToolRoot, _msvcCompilerRoot) = MSVCUtils.SetupMsvcPaths(toolRoot, version);
         return true;
     }
 

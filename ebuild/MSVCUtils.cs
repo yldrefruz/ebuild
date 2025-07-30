@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace ebuild;
 
@@ -88,5 +89,81 @@ public static class MSVCUtils
         vswhereFile.Close();
         vswhereFile.Dispose();
         return true;
+    }
+
+    /// <summary>
+    /// Finds and returns the MSVC version to use.
+    /// First checks the configured version, then discovers available versions if needed.
+    /// </summary>
+    /// <param name="toolRoot">The MSVC tool root directory</param>
+    /// <param name="logger">Logger instance for logging discovery process</param>
+    /// <returns>The MSVC version string to use, or null if not found</returns>
+    public static async Task<string?> FindMsvcVersion(string toolRoot, ILogger logger)
+    {
+        var version = Config.Get().MsvcVersion ?? string.Empty;
+        version = version.Trim();
+        
+        if (!string.IsNullOrEmpty(version) && File.Exists(Path.Join(toolRoot, "VC", "Tools", "MSVC", version)))
+        {
+            return version;
+        }
+        
+        if (!string.IsNullOrEmpty(version))
+        {
+            logger.LogInformation("(Config) => Msvc Version: {version} is not found, trying to find a valid version.",
+                version);
+        }
+        else
+        {
+            logger.LogInformation("(Config) => Msvc Version: <Empty> is not found, trying to find a valid version.");
+        }
+
+        // Discover available versions
+        Dictionary<Version, string> versionDict = new();
+        var versionFilesPath = Path.Join(toolRoot, "VC", "Auxiliary", "Build");
+        
+        if (!Directory.Exists(versionFilesPath))
+        {
+            logger.LogError("MSVC version files directory not found: {path}", versionFilesPath);
+            return null;
+        }
+        
+        foreach (var file in Directory.GetFiles(versionFilesPath, "Microsoft.VCToolsVersion.*default.txt"))
+        {
+            try
+            {
+                var content = await File.ReadAllTextAsync(file);
+                if (Version.TryParse(content, out var foundVer))
+                {
+                    versionDict.Add(foundVer, content);
+                    using (logger.BeginScope("Version Discovery"))
+                    {
+                        logger.LogInformation("Found version: {content}", content);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Failed to read version file: {file}", file);
+            }
+        }
+
+        var latestVer = versionDict.Keys.ToList().OrderDescending().FirstOrDefault();
+        return latestVer != null ? versionDict[latestVer].Trim() : null;
+    }
+
+    /// <summary>
+    /// Sets up MSVC paths using the discovered version.
+    /// </summary>
+    /// <param name="toolRoot">The MSVC tool root directory</param>
+    /// <param name="version">The MSVC version to use</param>
+    /// <returns>A tuple containing (msvcToolRoot, msvcCompilerRoot)</returns>
+    public static (string msvcToolRoot, string msvcCompilerRoot) SetupMsvcPaths(string toolRoot, string version)
+    {
+        var msvcToolRoot = Path.Join(toolRoot, "VC", "Tools", "MSVC", version);
+        var host = Environment.Is64BitOperatingSystem ? "Hostx64" : "Hostx86";
+        var msvcCompilerRoot = Path.Join(msvcToolRoot, "bin", host);
+        
+        return (msvcToolRoot, msvcCompilerRoot);
     }
 }
