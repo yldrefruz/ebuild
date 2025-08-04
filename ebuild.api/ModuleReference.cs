@@ -57,7 +57,7 @@ public partial class ModuleReference
     public string GetVersion() => _version;
     public Dictionary<string, string> GetOptions() => _options;
 
-    public void ResolveModulePath(ModuleBase resolverModule)
+    public void ResolveModulePath(ModuleBase? resolverModule)
     {
         if (_resolved)
             return;
@@ -65,14 +65,14 @@ public partial class ModuleReference
         //0th resolve method. (If can be found directly, use)
         if (HasModule(_path, ref _path, out _, resolverModule)) return;
         //1st resolve method. (Resolve from dependency search paths)
-        if (resolverModule.DependencySearchPaths.Any(dependencySearchPath =>
+        if (resolverModule != null && resolverModule.DependencySearchPaths.Any(dependencySearchPath =>
                 HasModule(Path.Join(dependencySearchPath, _path), ref _path, out _, resolverModule)))
         {
             return;
         }
 
         //2nd resolve method. (--additional-dependency-paths option)
-        if (resolverModule.Context.AdditionalDependencyPaths.Any(additionalDependencyPath =>
+        if (resolverModule != null && resolverModule.Context.AdditionalDependencyPaths.Any(additionalDependencyPath =>
                 HasModule(Path.Join(additionalDependencyPath, _path), ref _path, out _, resolverModule)))
         {
             return;
@@ -88,7 +88,7 @@ public partial class ModuleReference
         }
 
         //4th resolve method. (<module-dir>/.repo)
-        if (HasModule(Path.Join(resolverModule.Context.ModuleFile.Directory!.FullName, ".repo", _path), ref _path,
+        if (resolverModule != null && HasModule(Path.Join(resolverModule.Context.ModuleFile.Directory!.FullName, ".repo", _path), ref _path,
                 out _, resolverModule))
             return;
 
