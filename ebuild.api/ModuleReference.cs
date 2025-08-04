@@ -63,17 +63,17 @@ public partial class ModuleReference
             return;
         _resolved = true;
         //0th resolve method. (If can be found directly, use)
-        if (HasModule(_path, ref _path, out _)) return;
+        if (HasModule(_path, ref _path, out _, resolverModule)) return;
         //1st resolve method. (Resolve from dependency search paths)
         if (resolverModule.DependencySearchPaths.Any(dependencySearchPath =>
-                HasModule(Path.Join(dependencySearchPath, _path), ref _path, out _)))
+                HasModule(Path.Join(dependencySearchPath, _path), ref _path, out _, resolverModule)))
         {
             return;
         }
 
         //2nd resolve method. (--additional-dependency-paths option)
         if (resolverModule.Context.AdditionalDependencyPaths.Any(additionalDependencyPath =>
-                HasModule(Path.Join(additionalDependencyPath, _path), ref _path, out _)))
+                HasModule(Path.Join(additionalDependencyPath, _path), ref _path, out _, resolverModule)))
         {
             return;
         }
@@ -82,20 +82,20 @@ public partial class ModuleReference
         if ((Environment.GetEnvironmentVariable("EBUILD_DEPENDENCY_PATH")
                  ?.Split(OperatingSystem.IsWindows() ? ";" : ":") ??
              Array.Empty<string>()).Any(ebuildDependencyPath =>
-                HasModule(Path.Join(ebuildDependencyPath, _path), ref _path, out _)))
+                HasModule(Path.Join(ebuildDependencyPath, _path), ref _path, out _, resolverModule)))
         {
             return;
         }
 
         //4th resolve method. (<module-dir>/.repo)
         if (HasModule(Path.Join(resolverModule.Context.ModuleFile.Directory!.FullName, ".repo", _path), ref _path,
-                out _))
+                out _, resolverModule))
             return;
 
         //5th resolve method. (~/ebuild/.repo)
         if (HasModule(
                 Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ebuild/.repo", _path),
-                ref _path, out _))
+                ref _path, out _, resolverModule))
             return;
 
         //6th resolve method. (%localappdata%/ebuild/.repo)
@@ -103,7 +103,7 @@ public partial class ModuleReference
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
                     Environment.SpecialFolderOption.Create),
                 "ebuild/.repo", _path
-            ), ref _path, out _))
+            ), ref _path, out _, resolverModule))
         {
             return;
         }
@@ -111,14 +111,20 @@ public partial class ModuleReference
         // 7th resolve method. ($PATH/<module>)
         if ((Environment.GetEnvironmentVariable("PATH")
                  ?.Split(OperatingSystem.IsWindows() ? ";" : ":") ??
-             Array.Empty<string>()).Any(p => HasModule(Path.Join(p, _path), ref _path, out _)))
+             Array.Empty<string>()).Any(p => HasModule(Path.Join(p, _path), ref _path, out _, resolverModule)))
         {
             return;
         }
     }
 
-    private static bool HasModule(string path, ref string found, out string name)
+    private static bool HasModule(string path, ref string found, out string name, ModuleBase? relativeTo = null)
     {
+        if (File.Exists(Path.GetFullPath(path, relativeTo?.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory())))
+        {
+            name = Path.GetFileNameWithoutExtension(path);
+            found = Path.GetFullPath(path, relativeTo?.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory());
+            return true;
+        }
         if (File.Exists(path))
         {
             name = Path.GetFileNameWithoutExtension(path);

@@ -138,6 +138,22 @@ public class ModuleFile : IModuleFile
 
     public readonly string Name;
 
+    public static ModuleFile Get(ModuleReference moduleReference, ModuleReference relativeTo)
+    {
+        var path = moduleReference.GetFilePath();
+        path = Path.GetFullPath(path, Path.GetDirectoryName(relativeTo.GetFilePath())!);
+        var f = IModuleFile.TryDirToModuleFile(path, out _);
+        if (!File.Exists(f)) throw new ModuleFileNotFoundException(f);
+        var fi = new FileInfo(f);
+        if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
+        {
+            ModuleFileLogger.LogDebug("Module {path} file was already cached. Using cached value", path);
+            return value;
+        }
+        var mf = new ModuleFile(moduleReference, relativeTo);
+        ModuleFileRegistry.Add(fi.FullName, mf);
+        return mf;
+    }
     public static ModuleFile Get(ModuleReference moduleReference)
     {
         var path = moduleReference.GetFilePath();
@@ -155,6 +171,25 @@ public class ModuleFile : IModuleFile
         return mf;
     }
 
+    private ModuleFile(ModuleReference reference, ModuleReference relativeTo)
+    {
+        _reference = new ModuleReference(outputType: reference.GetOutput(),
+            path: IModuleFile.TryDirToModuleFile(Path.GetFullPath(reference.GetFilePath(), Path.GetDirectoryName(relativeTo.GetFilePath())!), out var name),
+            version: reference.GetVersion(),
+            options: reference.GetOptions());
+        if (string.IsNullOrEmpty(_reference.GetFilePath()))
+        {
+            throw new ModuleFileNotFoundException(_reference.GetFilePath());
+        }
+
+        Name = name;
+
+        var lastIndexOfEbuild = Name.LastIndexOf(".ebuild", StringComparison.InvariantCultureIgnoreCase);
+        if (lastIndexOfEbuild != -1)
+        {
+            Name = Name.Remove(lastIndexOfEbuild);
+        }
+    }
     private ModuleFile(ModuleReference reference)
     {
         _reference = new ModuleReference(outputType: reference.GetOutput(),

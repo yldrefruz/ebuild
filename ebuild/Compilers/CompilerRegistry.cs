@@ -40,18 +40,21 @@ public class CompilerRegistry
                                                      PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ??
                                                      "Null";
 
-    public static async Task<CompilerBase?> CreateInstanceFor(ModuleInstancingParams instancingParams)
+    public static async Task<CompilerBase?> CreateInstanceFor(IModuleInstancingParams instancingParams)
     {
-        var moduleFile = (ModuleFile)instancingParams.SelfModuleReference;
+        var moduleFile = (ModuleFile)instancingParams.GetSelfModuleReference();
         var createdModule = await moduleFile.CreateModuleInstance(instancingParams);
         if (createdModule == null)
         {
-            instancingParams.Logger?.LogError("Can't create compiler instance.");
+            // get from ModuleInstancingParams if instancingParams is child of
+            if (instancingParams is ModuleInstancingParams mip1)
+                mip1.Logger?.LogError("Can't create compiler instance.");
             return null;
         }
         if (await moduleFile.HasCircularDependency(instancingParams))
         {
-            instancingParams.Logger?.LogError("Module {module_name} has circular dependency.", createdModule.Name ?? createdModule.GetType().Name);
+            if (instancingParams is ModuleInstancingParams mip2)
+                mip2.Logger?.LogError("Module {module_name} has circular dependency.", createdModule.Name ?? createdModule.GetType().Name);
             return null;
         }
         foreach (var dependency in createdModule.Dependencies.Joined())
@@ -59,15 +62,16 @@ public class CompilerRegistry
             await ModuleFile.Get(dependency).CreateModuleInstance(instancingParams.CreateCopyFor(dependency));
         }
 
-        var compiler = await GetInstance().Create(instancingParams.CompilerName);
-        instancingParams.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
+        var compiler = await GetInstance().Create(instancingParams.GetCompilerName());
+        if (instancingParams is ModuleInstancingParams mip3)
+            mip3.Logger?.LogInformation("Compiler for module {module_name} is {compiler_name}({compiler_path})",
             createdModule.Name ?? createdModule.GetType().Name, compiler.GetName(),
             compiler.GetExecutablePath());
         compiler.SetModule(createdModule);
-        if (instancingParams.AdditionalCompilerOptions != null)
-            compiler.AdditionalCompilerOptions.AddRange(instancingParams.AdditionalCompilerOptions!);
-        if (instancingParams.AdditionalLinkerOptions != null)
-            compiler.AdditionalLinkerOptions.AddRange(instancingParams.AdditionalLinkerOptions!);
+        if (instancingParams.GetAdditionalCompilerOptions() != null)
+            compiler.AdditionalCompilerOptions.AddRange(instancingParams.GetAdditionalCompilerOptions()!);
+        if (instancingParams.GetAdditionalLinkerOptions() != null)
+            compiler.AdditionalLinkerOptions.AddRange(instancingParams.GetAdditionalLinkerOptions()!);
         return compiler;
     }
 

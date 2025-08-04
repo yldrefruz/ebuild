@@ -41,7 +41,7 @@ public class ModuleInstancingParams(ModuleReference moduleFileReference) : IModu
     public List<string>? AdditionalCompilerOptions;
     public List<string>? GetAdditionalCompilerOptions() => AdditionalCompilerOptions;
     public List<string>? AdditionalLinkerOptions;
-    public List<string>? GetAdditonalLinkerOptions() => AdditionalLinkerOptions;
+    public List<string>? GetAdditionalLinkerOptions() => AdditionalLinkerOptions;
     public List<string>? AdditionalDependencyPaths;
     public List<string>? GetAdditionalDependencyPaths() => AdditionalDependencyPaths;
 
@@ -83,6 +83,7 @@ public class ModuleInstancingParams(ModuleReference moduleFileReference) : IModu
         TargetArchitecture = Architecture,
         InstancingParams = this,
     };
+
 
 
     public static explicit operator ModuleContext(ModuleInstancingParams p) => p.ToModuleContext();

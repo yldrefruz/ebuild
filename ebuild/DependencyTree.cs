@@ -107,7 +107,7 @@ public class DependencyTree : IDependencyTree
         foreach (var child in await entry.Module.GetDependencies(
                      moduleInstancingParams))
         {
-            Entry childEntry = new(entry, ModuleFile.Get(child.Item1), child.Item2);
+            Entry childEntry = new(entry, ModuleFile.Get(child.Item1, entry.Module.GetSelfReference()), child.Item2);
             entry.Append(childEntry);
             if (childEntry.IsCircular())
             {

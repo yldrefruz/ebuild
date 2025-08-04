@@ -21,6 +21,9 @@ public class BuildCommand
     {
         var compilerInstancingParams = ModuleInstancingParams.FromOptionsAndArguments(context);
         compilerInstancingParams.Logger = _buildLogger;
+        var filePath = compilerInstancingParams.GetSelfModuleReference().GetFilePath();
+        var workDir = Path.GetDirectoryName(filePath);
+        Directory.SetCurrentDirectory(workDir!);
         var compiler = await CompilerRegistry.CreateInstanceFor(compilerInstancingParams);
         if (compiler == null)
             return;

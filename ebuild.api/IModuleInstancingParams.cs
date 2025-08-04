@@ -12,7 +12,7 @@ public interface IModuleInstancingParams
     public string GetPlatformName();
     public Dictionary<string, string>? GetOptions();
     public List<string>? GetAdditionalCompilerOptions();
-    public List<string>? GetAdditonalLinkerOptions();
+    public List<string>? GetAdditionalLinkerOptions();
     public List<string>? GetAdditionalDependencyPaths();
 
     public ModuleContext ToModuleContext();

@@ -22,7 +22,7 @@ public class AdditionalDependency
     /// The path to the dependency. This can be either a file or a directory.
     /// The path must be absolute.
     /// </summary>
-    public string DependencyPath { get; }
+    public string DependencyPath { get; private set; }
 
     /// <summary>
     /// The target path where the dependency should be copied to.
@@ -34,7 +34,7 @@ public class AdditionalDependency
     /// - ${RootOutputDir} - Absolute path of the output directory of the root module.
     /// - ${OutputDir} - Absolute path of the output directory of the module that owns this dependency.
     /// </summary>
-    public string? TargetDirectory { get; private set;} = "${RootOutputDir}";
+    public string? TargetDirectory { get; private set; } = "${RootOutputDir}";
 
     private ModuleBase? OwnerModule;
     public void SetOwnerModule(ModuleBase module)
@@ -44,20 +44,16 @@ public class AdditionalDependency
 
     public CustomProcessor? Processor { get; }
 
-    public AdditionalDependency(string dependencyFile)
+    public AdditionalDependency(string dependencyPath)
     {
-        DependencyPath = dependencyFile;
-        if (Directory.Exists(dependencyFile))
+        DependencyPath = dependencyPath;
+        if (Directory.Exists(dependencyPath))
         {
             Type = DependencyType.Directory;
         }
-        else if (File.Exists(dependencyFile))
+        else if (File.Exists(dependencyPath))
         {
             Type = DependencyType.File;
-        }
-        else
-        {
-            throw new ArgumentException($"Invalid dependency {dependencyFile}, couldn't be found or detect the type");
         }
     }
 
@@ -96,7 +92,9 @@ public class AdditionalDependency
     {
         if (OwnerModule == null)
             throw new NullReferenceException("OwnerModule must be set before processing the dependency.");
-        TargetDirectory = TargetDirectory?.Replace("$(OutputDir)", OwnerModule.GetBinaryOutputDirectory()) ?? OwnerModule.GetBinaryOutputDirectory();
+        DependencyPath = Path.GetFullPath(DependencyPath, OwnerModule?.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory());
+        TargetDirectory = TargetDirectory?.Replace("$(OutputDir)", OwnerModule?.GetBinaryOutputDirectory()) ?? OwnerModule?.GetBinaryOutputDirectory() ?? Directory.GetCurrentDirectory();
+        TargetDirectory = TargetDirectory?.Replace("$(RootOutputDir)", RootModule.GetBinaryOutputDirectory()) ?? RootModule.GetBinaryOutputDirectory();
         switch (Type)
         {
             case DependencyType.Directory:
