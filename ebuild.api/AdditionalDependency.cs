@@ -99,7 +99,7 @@ public class AdditionalDependency
         {
             case DependencyType.Directory:
                 {
-                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
+                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule!.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
                     Directory.CreateDirectory(targetDir); // Create the target directory if it doesn't exist
                     foreach (var file in Directory.GetFiles(DependencyPath, "*", SearchOption.AllDirectories))
                     {
@@ -118,7 +118,7 @@ public class AdditionalDependency
                 }
             case DependencyType.File:
                 {
-                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
+                    var targetDir = TargetDirectory ?? Path.Join(OwnerModule!.Context.ModuleDirectory!.FullName, OwnerModule.GetBinaryOutputDirectory());
                     Directory.CreateDirectory(targetDir);
                     var targetFile = Path.Combine(targetDir, Path.GetFileName(DependencyPath));
                     if (Processor == null)
