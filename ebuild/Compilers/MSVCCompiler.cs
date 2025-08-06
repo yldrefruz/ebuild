@@ -154,6 +154,7 @@ public class MsvcCompiler : CompilerBase
         if (compilingInputModule)
         {
             args += $"/D\"{(inputModule.Name ?? inputModule.Context.ModuleDirectory!.Name).ToUpperInvariant()}_BUILDING\"";
+            args += inputModule.CompilerOptions;
             // TODO: Disabled for now to test.
             // args += module.SourceFiles.Select(s => GetModuleFilePath(s, module));
         }

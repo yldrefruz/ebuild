@@ -309,7 +309,7 @@ public class GppCompiler : CompilerBase
         
         // Add additional compiler options
         args += AdditionalCompilerOptions;
-        
+        args += CurrentModule.CompilerOptions;
         // Add source files if requested
         if (includeSourceFiles)
         {

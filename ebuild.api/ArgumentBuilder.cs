@@ -10,11 +10,11 @@ public class ArgumentBuilder
 
     public ArgumentBuilder AddRange(IEnumerable<string> commands)
     {
-        _args.AddRange(commands);
+        _args.UnionWith(commands);
         return this;
     }
 
-    private readonly List<string> _args = new();
+    private readonly HashSet<string> _args = new();
 
     public override string ToString()
     {

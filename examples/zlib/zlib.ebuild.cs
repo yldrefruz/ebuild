@@ -33,7 +33,7 @@ public class ZlibEbuild : ModuleBase
         Name = "zlib";
         
         // Use C99 standard for zlib (it's a C library)
-        CStandard = CStandards.C99;
+        CStandard = CStandards.C17;
         
         // Setup should be called in constructor as per README
         // Call setup synchronously instead of using async/await
@@ -259,7 +259,16 @@ public class ZlibEbuild : ModuleBase
         
         // Add include directories
         Includes.Add(extractPath);
-        
+        if (Context.Platform == "Unix")
+        {
+            CompilerOptions.Add("-Wno-error=implicit-function-declaration");
+        }
+        if (Context.Platform == "Win32")
+        {
+            Definitions.Private.Add(new Definition("_CRT_SECURE_NO_DEPRECATE"));
+            Definitions.Private.Add(new Definition("_CRT_NONSTDC_NO_DEPRECATE"));
+        }
+
         // Apply module options to definitions
         if (EnableDebug)
         {

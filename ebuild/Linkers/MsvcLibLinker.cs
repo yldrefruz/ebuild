@@ -101,6 +101,7 @@ public class MsvcLibLinker : LinkerBase
         argumentBuilder +=
             $"/OUT:\"{Path.Join(GetBinaryOutputFolder(), (CurrentModule.Name ?? CurrentModule.GetType().Name) + ".lib")}\"";
         argumentBuilder += AdditionalLinkerOptions;
+        argumentBuilder += CurrentModule.LinkerOptions;
         argumentBuilder += CurrentModule.LibrarySearchPaths.Joined().Select(s => $"/LIBPATH:\"{s}\"");
         argumentBuilder += files.Select(f => GetModuleFilePath(f, CurrentModule));
         argumentBuilder += CurrentModule.Libraries.Joined()

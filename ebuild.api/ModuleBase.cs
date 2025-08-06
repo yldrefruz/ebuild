@@ -71,6 +71,9 @@ public abstract class ModuleBase
 
     public ModuleContext Context;
 
+    public List<string> CompilerOptions = [];
+    public List<string> LinkerOptions = [];
+
     protected ModuleBase(ModuleContext context)
     {
         Context = context;

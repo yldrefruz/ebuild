@@ -99,7 +99,7 @@ public class MsvcLinkLinker : LinkerBase
         }
 
         argumentBuilder += AdditionalLinkerOptions;
-
+        argumentBuilder += CurrentModule.LinkerOptions;
         var outType = ".exe";
         switch (CurrentModule.Type)
         {

@@ -326,6 +326,7 @@ public class GccLinker : LinkerBase
 
         // Add additional linker options
         args += AdditionalLinkerOptions;
+        args += CurrentModule.LinkerOptions;
 
         return args.ToString();
     }

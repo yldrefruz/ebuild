@@ -242,7 +242,7 @@ public class GccCompiler : CompilerBase
         
         // Add additional compiler options
         args += AdditionalCompilerOptions;
-        
+        args += CurrentModule.CompilerOptions;
         // Add source files if requested
         if (includeSourceFiles)
         {
