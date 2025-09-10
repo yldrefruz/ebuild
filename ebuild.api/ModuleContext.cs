@@ -27,8 +27,8 @@ public class ModuleContext
     public string Platform;
     public string Compiler;
     public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
-    public Dictionary<string, string> Options = new();
-    public List<string> AdditionalDependencyPaths = new();
+    public Dictionary<string, string> Options = [];
+    public List<string> AdditionalDependencyPaths = [];
     public IModuleInstancingParams? InstancingParams;
 
 
@@ -57,7 +57,7 @@ public class ModuleContext
         }
     }
 
-    public List<Message> Messages = new();
+    public List<Message> Messages = [];
 
 
     public void AddMessage(Message.SeverityTypes severityType, string message)

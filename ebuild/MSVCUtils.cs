@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,7 @@ public static class MSVCUtils
         return Path.Join(localAppData, "ebuild", "msvc", "vswhere");
     }
 
-    public static async Task<string> GetMsvcToolRoot(string requirement = "Microsoft.VisualStudio.Component.VC.Tools.*")
+    public static async Task<string> GetMsvcToolRoot(string requirement = "Microsoft.VisualStudio.Component.VC.*")
     {
         var toolRoot = Config.Get().MsvcPath ?? string.Empty;
         if (string.IsNullOrEmpty(toolRoot))
@@ -102,12 +103,12 @@ public static class MSVCUtils
     {
         var version = Config.Get().MsvcVersion ?? string.Empty;
         version = version.Trim();
-        
+
         if (!string.IsNullOrEmpty(version) && File.Exists(Path.Join(toolRoot, "VC", "Tools", "MSVC", version)))
         {
             return version;
         }
-        
+
         if (!string.IsNullOrEmpty(version))
         {
             logger.LogInformation("(Config) => Msvc Version: {version} is not found, trying to find a valid version.",
@@ -119,15 +120,15 @@ public static class MSVCUtils
         }
 
         // Discover available versions
-        Dictionary<Version, string> versionDict = new();
+        Dictionary<Version, string> versionDict = [];
         var versionFilesPath = Path.Join(toolRoot, "VC", "Auxiliary", "Build");
-        
+
         if (!Directory.Exists(versionFilesPath))
         {
             logger.LogError("MSVC version files directory not found: {path}", versionFilesPath);
             return null;
         }
-        
+
         foreach (var file in Directory.GetFiles(versionFilesPath, "Microsoft.VCToolsVersion.*default.txt"))
         {
             try
@@ -163,7 +164,84 @@ public static class MSVCUtils
         var msvcToolRoot = Path.Join(toolRoot, "VC", "Tools", "MSVC", version);
         var host = Environment.Is64BitOperatingSystem ? "Hostx64" : "Hostx86";
         var msvcCompilerRoot = Path.Join(msvcToolRoot, "bin", host);
-        
+
         return (msvcToolRoot, msvcCompilerRoot);
+    }
+
+    public class WindowsKitInformation(string version, string kitRoot)
+    {
+        public readonly string Version = version;
+        public readonly string IncludePath = Path.Join(kitRoot, "Include", version);
+        public readonly string LibPath = Path.Join(kitRoot, "Lib", version);
+
+        public readonly string KitRoot = kitRoot;
+    }
+
+    private static WindowsKitInformation[]? cachedInformation = null;
+
+
+    public static WindowsKitInformation? GetWindowsKit(string? version)
+    {
+        var kits = GetWindowsKits();
+        if (version == null)
+        {
+            if (kits.Length == 0)
+                return null;
+            return kits.OrderByDescending(k => Version.Parse(k.Version)).FirstOrDefault();
+        }
+        foreach (var kit in kits)
+        {
+            if (kit.Version == version)
+                return kit;
+        }
+        return null;
+    }
+
+    public static WindowsKitInformation[] GetWindowsKits()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return [];
+        if (cachedInformation == null)
+            cachedInformation = DiscoverWindowsKits();
+        return cachedInformation;
+
+    }
+
+
+    private static WindowsKitInformation[] DiscoverWindowsKits()
+    {
+        if(!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return [];
+        List<WindowsKitInformation> returnArr = [];
+        const string kitsRegPath = @"SOFTWARE\Microsoft\Windows Kits\Installed Roots";
+        try
+        {
+            using var baseKey = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64);
+            using var kitsKey = baseKey.OpenSubKey(kitsRegPath);
+            if (kitsKey != null)
+            {
+                var kitRoot10 = kitsKey.GetValue("KitsRoot10") as string;
+                var kitRoot81 = kitsKey.GetValue("KitsRoot81") as string;
+                foreach (var subkey in kitsKey.GetSubKeyNames())
+                {
+                    if (subkey.StartsWith("10."))
+                    {
+                        if (kitRoot10 != null)
+                            returnArr.Add(new WindowsKitInformation(subkey, kitRoot10));
+                    }
+                    else if (subkey.StartsWith("8.1"))
+                    {
+                        if (kitRoot81 != null)
+                            returnArr.Add(new WindowsKitInformation(subkey, kitRoot81));
+                    }
+                }
+            }
+
+        }
+        catch
+        {
+            // Ignore registry access errors
+        }
+        return [.. returnArr];
     }
 }

@@ -8,7 +8,7 @@ public partial class ModuleReference
 {
     private string _path; // Absolute path to file
     private readonly string _output = "default"; // The output type
-    private readonly Dictionary<string, string> _options = new();
+    private readonly Dictionary<string, string> _options = [];
     private readonly string _version = "latest";
     private static readonly Regex ReferenceRegex = ModuleReferenceStringRegex();
 

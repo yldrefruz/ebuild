@@ -30,7 +30,7 @@ public class ModuleOptionAttribute : Attribute
         var nCandidate = Name ?? memberInfo.Name;
         if (NameRegex.IsMatch(nCandidate))
             return nCandidate;
-        List<int> nonMatchingParts = new();
+        List<int> nonMatchingParts = [];
         for (var i = 0; i < nCandidate.Length; ++i)
         {
             if (!NameRegex.Matches(nCandidate).AsEnumerable().Any(m => m.Index >= i && m.Index + m.Length <= i))

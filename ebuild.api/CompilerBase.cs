@@ -20,8 +20,8 @@ public abstract class CompilerBase
     /// </summary>
     protected LinkerBase? Linker;
 
-    public readonly List<string> AdditionalCompilerOptions = new();
-    public readonly List<string> AdditionalLinkerOptions = new();
+    public readonly List<string> AdditionalCompilerOptions = [];
+    public readonly List<string> AdditionalLinkerOptions = [];
 
     public bool CleanCompilation = false;
     public int? ProcessCount = null;

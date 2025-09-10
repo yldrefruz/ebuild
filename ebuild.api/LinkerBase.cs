@@ -9,7 +9,7 @@ public abstract class LinkerBase
     /// </summary>
     protected ModuleBase? CurrentModule;
 
-    public readonly List<string> AdditionalLinkerOptions = new();
+    public readonly List<string> AdditionalLinkerOptions = [];
 
     /// <summary>
     /// Checks if the linker can be run in this state.

@@ -185,7 +185,7 @@ public class MsvcLinkLinker : LinkerBase
 
         using (Logger.BeginScope("Link"))
         {
-            Logger.LogInformation("Launching link.exe with command file content {commandFileContent}", argumentString);
+            Logger.LogDebug("Launching link.exe with command file content {commandFileContent}", argumentString);
             var p = new ProcessStartInfo()
             {
                 Arguments = $"@\"{tempFile}\"",

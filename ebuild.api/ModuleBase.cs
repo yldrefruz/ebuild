@@ -26,7 +26,7 @@ public abstract class ModuleBase
     /// The search paths to use for dependencies.
     /// This is used to find the dependencies.
     /// </summary>
-    public List<string> DependencySearchPaths = new();
+    public List<string> DependencySearchPaths = [];
 
     /// <summary>Dependencies to add for this module. These are copied to the build directory.</summary>
     public AccessLimitList<AdditionalDependency> AdditionalDependencies = new();
@@ -40,7 +40,7 @@ public abstract class ModuleBase
     /// <summary>
     /// The source files to use. This is a list of files which are used to compile the module.
     /// </summary>
-    public List<string> SourceFiles = new();
+    public List<string> SourceFiles = [];
 
     /// <summary>
     /// The name of the module. If null will automatically deduce the name from the file name.
@@ -65,6 +65,7 @@ public abstract class ModuleBase
 
     /// <summary>The optimization level for this module.</summary>
     public OptimizationLevel OptimizationLevel = OptimizationLevel.Speed;
+    public string? RequiredWindowsSdkVersion = null;
 
     /// <summary> The type of this module</summary>
     public ModuleType Type;
@@ -129,7 +130,7 @@ public abstract class ModuleBase
     /// <returns>the resulting option dictionary</returns>
     public Dictionary<string, object?> GetOptions(bool onlyOutputChanging = false)
     {
-        Dictionary<string, object?> d = new();
+        Dictionary<string, object?> d = [];
         foreach (var field in GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             foreach (var attribute in field.GetCustomAttributes<ModuleOptionAttribute>(true))
@@ -236,7 +237,7 @@ public abstract class ModuleBase
     /// </summary>
     public HashSet<Tuple<string, string>> GetAvailableOutputIdAndNames()
     {
-        HashSet<Tuple<string, string>> names = new();
+        HashSet<Tuple<string, string>> names = [];
         foreach (var transformer in GetOutputTransformers())
         {
             names.Add(new Tuple<string, string>(transformer.Item2, transformer.Item1));

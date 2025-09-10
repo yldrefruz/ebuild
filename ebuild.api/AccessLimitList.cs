@@ -2,8 +2,8 @@
 
 public class AccessLimitList<T>
 {
-    public readonly List<T> Public = new();
-    public readonly List<T> Private = new();
+    public readonly List<T> Public = [];
+    public readonly List<T> Private = [];
 
     public List<T> GetLimited(AccessLimit? limit)
     {

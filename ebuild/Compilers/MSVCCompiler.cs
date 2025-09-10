@@ -88,24 +88,24 @@ public class MsvcCompiler : CompilerBase
     {
         if (CurrentModule == null)
             return;
-
-        CurrentModule.Includes.Private.AddRange(new[]
+        var windowsKitInfo = MSVCUtils.GetWindowsKit(CurrentModule.RequiredWindowsSdkVersion);
+        CurrentModule.Includes.Private.Add(Path.Join(_msvcToolRoot, "include"));
+        CurrentModule.LibrarySearchPaths.Private.Add(GetMsvcCompilerLib());
+        if (windowsKitInfo != null)
         {
-            Path.Join(_msvcToolRoot, "include"),
-            //TODO: programatically find this.
-            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\ucrt",
-            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\um",
-            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\shared",
-            @"C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0\winrt"
-        });
-
-        CurrentModule.LibrarySearchPaths.Private.AddRange(new[]
-        {
-            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\um\x64",
-            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt\x64",
-            @"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0\ucrt_enclave\x64",
-            GetMsvcCompilerLib()
-        });
+            var includes = new[] { "ucrt", "um", "winrt", "shared" };
+            CurrentModule.Includes.Private.AddRange(includes.Select(include => Path.Join(windowsKitInfo.IncludePath, include)).Where(Directory.Exists));
+            var searchPaths = new[] { "um", "ucrt", "ucrt_enclave" };
+            if (CurrentModule.Context.TargetArchitecture == Architecture.X64)
+            {
+                searchPaths = searchPaths.Select(p => Path.Join(p, "x64")).ToArray();
+            }
+            else
+            {
+                searchPaths = searchPaths.Select(p => Path.Join(p, "x86")).ToArray();
+            }
+            CurrentModule.LibrarySearchPaths.Private.AddRange(searchPaths.Select(lib => Path.Join(windowsKitInfo.LibPath, lib)).Where(Directory.Exists));
+        }
     }
 
     private string CppStandardToArg(CppStandards standard)

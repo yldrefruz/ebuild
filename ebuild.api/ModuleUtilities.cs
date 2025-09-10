@@ -4,7 +4,7 @@ public static class ModuleUtilities
 {
     public static string[] GetAllSourceFiles(this ModuleBase module, string root, params string[] extensions)
     {
-        List<string> files = new();
+        List<string> files = [];
         string findAt = Path.Join(module.Context.ModuleDirectory!.FullName, root);
         foreach (var extension in extensions)
         {

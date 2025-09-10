@@ -14,7 +14,7 @@ public class ArgumentBuilder
         return this;
     }
 
-    private readonly HashSet<string> _args = new();
+    private readonly HashSet<string> _args = [];
 
     public override string ToString()
     {
