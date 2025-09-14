@@ -1,7 +1,5 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -9,9 +7,6 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ebuild.api;
 using ebuild.api.Compiler;
-using ebuild.api.Toolchain;
-using ebuild.Linkers;
-using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
@@ -114,15 +109,17 @@ public class MsvcClCompiler(ModuleBase module, IModuleInstancingParams instancin
         if (windowsKitInfo != null)
         {
             var includes = new[] { "ucrt", "um", "winrt", "shared" };
-            CurrentModule.Includes.Private.AddRange(includes.Select(include => Path.Join(windowsKitInfo.IncludePath, include)).Where(Directory.Exists));
             var searchPaths = new[] { "um", "ucrt", "ucrt_enclave" };
+
+
+            CurrentModule.Includes.Private.AddRange(includes.Select(include => Path.Join(windowsKitInfo.IncludePath, include)).Where(Directory.Exists));
             if (CurrentModule.Context.TargetArchitecture == Architecture.X64)
             {
-                searchPaths = searchPaths.Select(p => Path.Join(p, "x64")).ToArray();
+                searchPaths = [.. searchPaths.Select(p => Path.Join(p, "x64"))];
             }
             else
             {
-                searchPaths = searchPaths.Select(p => Path.Join(p, "x86")).ToArray();
+                searchPaths = [.. searchPaths.Select(p => Path.Join(p, "x86"))];
             }
             CurrentModule.LibrarySearchPaths.Private.AddRange(searchPaths.Select(lib => Path.Join(windowsKitInfo.LibPath, lib)).Where(Directory.Exists));
         }
@@ -131,23 +128,13 @@ public class MsvcClCompiler(ModuleBase module, IModuleInstancingParams instancin
     private string CppStandardToArg(CppStandards standard)
     {
         var value = "/std:";
-        switch (standard)
+        value += standard switch
         {
-            case CppStandards.Cpp14:
-                value += "c++14";
-                break;
-            case CppStandards.Cpp17:
-                value += "c++17";
-                break;
-            default:
-            case CppStandards.Cpp20:
-                value += "c++20";
-                break;
-            case CppStandards.CppLatest:
-                value += "c++latest";
-                break;
-        }
-
+            CppStandards.Cpp14 => "c++14",
+            CppStandards.Cpp17 => "c++17",
+            CppStandards.CppLatest => "c++latest",
+            _ => "c++20",
+        };
         return value;
     }
 
