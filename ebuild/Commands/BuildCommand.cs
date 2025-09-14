@@ -1,52 +1,46 @@
 ﻿using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.CommandLine.Parsing;
+using CliFx.Attributes;
+using ebuild.api;
+using ebuild.api.Toolchain;
 using ebuild.Compilers;
-using Microsoft.Extensions.Logging;
+
+
 
 namespace ebuild.Commands;
 
-public class BuildCommand
+[Command("build", Description = "build the specified module")]
+public class BuildCommand : ModuleCreatingCommand
 {
-    private readonly ILogger _buildLogger = EBuild.LoggerFactory.CreateLogger("Build");
-
-    private readonly Command _command = new("build", "build the specified module");
-    private readonly Option<bool> _noCompile = new("--noCompile", () => false, "disable compilation");
-    private readonly Option<bool> _clean = new("--clean", () => false, "clean compilation");
-
-    private readonly Option<int> _processCount =
-        new(new[] { "--process-count", "-pc" }, description: "the multi process count");
-
-    private async Task Execute(InvocationContext context)
-    {
-        var compilerInstancingParams = ModuleInstancingParams.FromOptionsAndArguments(context);
-        compilerInstancingParams.Logger = _buildLogger;
     
-        var filePath = Path.GetFullPath(compilerInstancingParams.GetSelfModuleReference().GetFilePath());
+    
+    [CommandOption("dry-run", 'n', Description = "perform a trial run with no actual building")]
+    public bool NoCompile { get; init; } = false;
+    [CommandOption("clean", Description = "clean build")]
+    public bool Clean { get; init; } = false;
+    [CommandOption("build-worker-count", 'p', Description = "the build worker count to use. Default is 1")]
+    public int ProcessCount { get; init; } = 1;
+
+
+
+    public override async ValueTask ExecuteAsync(CliFx.Infrastructure.IConsole console)
+    {
         
+        var filePath = Path.GetFullPath(ModuleInstancingParams.SelfModuleReference.GetFilePath());
+
         var workDir = Directory.Exists(filePath) ? filePath : Path.GetDirectoryName(filePath);
+        // TODO: don't touch the current directory. Make all paths absolute instead.
         Directory.SetCurrentDirectory(workDir!);
-        var compiler = await CompilerRegistry.CreateInstanceFor(compilerInstancingParams);
+        var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
+        var moduleInstance = (await moduleFile.CreateModuleInstance(ModuleInstancingParams)) ?? throw new Exception("Failed to create module instance");
+        // TODO: Move to a build graph system.
+        // TODO: Create a build graph and make it abstract so that the compiler isn't responsible for managing the build order and module itself.
+        // TODO: Linker shouldn'be called from the compiler. Build graph should manage the linkers as well.
+        var compiler = await ModuleInstancingParams.Toolchain.CreateCompiler(moduleInstance, ModuleInstancingParams);
         if (compiler == null)
             return;
-        var noCompile = context.ParseResult.GetValueForOption(_noCompile);
-        compiler.CleanCompilation = context.ParseResult.GetValueForOption(_clean);
-        compiler.ProcessCount = context.ParseResult.HasOption(_processCount)
-            ? context.ParseResult.GetValueForOption(_processCount)
-            : null;
-        if (!noCompile)
+        compiler.CleanCompilation = Clean;
+        compiler.ProcessCount = ProcessCount; 
+        if (!NoCompile)
             await compiler.Compile();
     }
-
-    public BuildCommand()
-    {
-        _command.AddOption(_noCompile);
-        _command.AddOption(_clean);
-        _command.AddOption(_processCount);
-        _command.AddCompilerCreationParams();
-
-        _command.SetHandler(Execute);
-    }
-
-    public static implicit operator Command(BuildCommand c) => c._command;
 }

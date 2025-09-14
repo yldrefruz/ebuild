@@ -4,6 +4,8 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using ebuild.api.Compiler;
+using ebuild.api.Toolchain;
 
 namespace ebuild.api;
 
@@ -97,6 +99,8 @@ public abstract class ModuleBase
         }
     }
 
+    public virtual void OnPostConstruction(){}
+
     /// <summary>
     /// Checks if the module is supported on the current platform.
     /// This is used to check if the module can be compiled on the current platform.
@@ -105,13 +109,7 @@ public abstract class ModuleBase
     /// <returns>whether support is available</returns>
     public virtual bool IsPlatformSupported(PlatformBase inPlatformBase) => true;
 
-    /// <summary>
-    /// Checks if the compiler is supported.
-    /// This is used to check if the module can be compiled with the given compiler.
-    /// </summary>
-    /// <param name="inCompilerBase">The compiler we try to compile this module with.</param>
-    /// <returns>whether support is available</returns>
-    public virtual bool IsCompilerSupported(CompilerBase inCompilerBase) => true;
+    public virtual bool IsToolchainSupported(IToolchain toolchain) => true;
 
     /// <summary>
     /// Checks if the architecture is supported.

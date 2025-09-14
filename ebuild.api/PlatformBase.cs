@@ -4,38 +4,9 @@ using System.Reflection;
 namespace ebuild.api;
 
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-public abstract class PlatformBase
+public abstract class PlatformBase(string name)
 {
-    private readonly string _name;
+    public readonly string Name = name;
 
-    protected PlatformBase()
-    {
-        if (GetType().GetCustomAttribute(typeof(PlatformAttribute)) is PlatformAttribute pa)
-        {
-            _name = pa.GetName();
-        }
-        else
-        {
-            throw new NoPlatformAttributeException(GetType());
-        }
-    }
-
-    public class NoPlatformAttributeException : Exception
-    {
-        public readonly Type ForType;
-
-        public NoPlatformAttributeException(Type forType) : base(
-            $"{forType.Name} doesn't have the `Platform` attribute."
-        )
-        {
-            ForType = forType;
-        }
-    }
-
-    public string GetName()
-    {
-        return _name;
-    }
-
-    public abstract string? GetDefaultCompilerName();
+    public abstract string? GetDefaultToolchainName();
 }

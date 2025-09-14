@@ -4,15 +4,17 @@ using ebuild.api;
 
 namespace ebuild.Platforms;
 
-[Platform("Null")]
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
 public class NullPlatform : PlatformBase
 {
+    public NullPlatform() : base("null")
+    {
+    }
     private static NullPlatform? _platform;
 
-    public override string? GetDefaultCompilerName()
+    public override string? GetDefaultToolchainName()
     {
-        return "Null";
+        return "null";
     }
 
     public static PlatformBase Get()

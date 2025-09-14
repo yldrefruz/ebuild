@@ -12,7 +12,7 @@ public class Config
     /// <summary>
     /// The preferred compiler to use. If not found will fallback to platform preferred compiler.
     /// </summary>
-    public string? PreferredCompilerName = string.Empty;
+    public string? PreferredToolchainName = string.Empty;
 
     /// <summary>
     /// The msvc version to use. Empty or "latest" for using the latest version available.
@@ -62,7 +62,7 @@ public class Config
     /// </summary>
     private void Setup()
     {
-        PreferredCompilerName = PlatformRegistry.GetHostPlatform().GetDefaultCompilerName() ?? string.Empty;
+        PreferredToolchainName = PlatformRegistry.GetHostPlatform().GetDefaultToolchainName() ?? string.Empty;
     }
 
     private static string LocalFile =>

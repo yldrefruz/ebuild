@@ -1,10 +1,13 @@
 ﻿using System.CommandLine;
 using System.Text;
+using CliFx;
 using ebuild.api;
+using ebuild.api.Toolchain;
 using ebuild.Commands;
 using ebuild.Compilers;
 using ebuild.Linkers;
 using ebuild.Platforms;
+using ebuild.Toolchains;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
@@ -15,7 +18,7 @@ namespace ebuild;
 public static class EBuild
 {
     public static bool DisableLogging = false;
-
+    // TODO: move the logging to the serilog library.
     private class LoggerFormatter : ConsoleFormatter
     {
         public LoggerFormatter() : base(nameof(LoggerFormatter))
@@ -106,21 +109,27 @@ public static class EBuild
         return typeof(ModuleBase).Assembly.Location; // ModuleBase is in ebuild.api
     }
 
+    static bool _initialized = false;
+    public static void InitializeEBuild()
+    {
+        if (_initialized) return;
+        _initialized = true;
+
+        AutoRegisterServiceAttribute.RegisterAllInAssembly(typeof(EBuild).Assembly);
+        PlatformRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
+        IToolchainRegistry.Get().RegisterAllFromAssembly(typeof(EBuild).Assembly);
+    }
+
+
+
+
     public static async Task<int> Main(string[] args)
     {
-        PlatformRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
-        CompilerRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
-        LinkerRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
+        InitializeEBuild();
 
-
-        var rootCommand = new RootCommand
-        {
-            new BuildCommand(),
-            new GenerateCommand(),
-            new PropertyCommand(),
-            new CheckCommand()
-        };
-
-        return await rootCommand.InvokeAsync(args);
+        return await new CliApplicationBuilder()
+            .AddCommandsFromThisAssembly()
+            .Build()
+            .RunAsync(args);
     }
 }

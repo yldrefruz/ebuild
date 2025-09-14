@@ -41,9 +41,9 @@ public class PlatformRegistry
             case PlatformID.Win32Windows:
             case PlatformID.Win32NT:
             case PlatformID.WinCE:
-                return GetInstance().Get<Win32Platform>();
+                return GetInstance().Get("windows");
             case PlatformID.Unix:
-                return GetInstance().Get<UnixPlatform>();
+                return GetInstance().Get("unix");
             case PlatformID.Xbox:
             //TODO: Xbox Platform
             //return GetInstance().Get<XboxPlatform>();
@@ -56,14 +56,6 @@ public class PlatformRegistry
         }
     }
 
-    public PlatformBase Get<T>() where T : PlatformBase
-    {
-        if (typeof(T).GetCustomAttribute(typeof(PlatformAttribute)) is not PlatformAttribute pa)
-            throw new PlatformBase.NoPlatformAttributeException(typeof(T));
-        var name = pa.GetName();
-        return Get(name);
-    }
-
     public PlatformBase Get(string name)
     {
         if (!_platformList.TryGetValue(name, out PlatformBase? value))
@@ -74,19 +66,17 @@ public class PlatformRegistry
 
     public void Register(PlatformBase platform)
     {
-        _platformList.Add(platform.GetName(), platform);
+        _platformList.Add(platform.Name, platform);
     }
 
     public void Register(Type platformType)
     {
         if (!platformType.IsSubclassOf(typeof(PlatformBase)))
             throw new ArgumentException("platformType is not a subclass of PlatformBase");
-        //Logger.LogInformation("Registering platform type \"{type_name}\"", platformType.FullName);
         var constructor = platformType.GetConstructor(Type.EmptyTypes);
         if (constructor == null) throw new ConstructorNotFoundException(platformType);
         var platform = constructor.Invoke(null);
-        _platformList.Add(((PlatformBase)platform).GetName(), (PlatformBase)platform);
-        //Logger.LogInformation("Register complete.");
+        _platformList.Add(((PlatformBase)platform).Name, (PlatformBase)platform);
     }
 
     public void RegisterAllFromAssembly(Assembly assembly)
@@ -94,10 +84,7 @@ public class PlatformRegistry
         foreach (var type in assembly.GetTypes())
         {
             if (!type.IsSubclassOf(typeof(PlatformBase))) continue;
-            if (type.GetCustomAttribute<PlatformAttribute>() != null)
-            {
-                Register(type);
-            }
+            Register(type);
         }
     }
 
@@ -107,5 +94,5 @@ public class PlatformRegistry
     }
 
     private static readonly PlatformRegistry Instance = new();
-    private readonly Dictionary<string, PlatformBase> _platformList = new();
+    private readonly Dictionary<string, PlatformBase> _platformList = [];
 }

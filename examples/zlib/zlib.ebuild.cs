@@ -31,8 +31,6 @@ public class ZlibEbuild : ModuleBase
         // Set default type, can be overridden by output transformers
         Type = ModuleType.StaticLibrary;
         Name = "zlib";
-        
-        // Use C99 standard for zlib (it's a C library)
         CStandard = CStandards.C17;
         
         // Setup should be called in constructor as per README
@@ -259,11 +257,11 @@ public class ZlibEbuild : ModuleBase
         
         // Add include directories
         Includes.Add(extractPath);
-        if (Context.Platform == "Unix")
+        if (Context.Platform.Name == "unix")
         {
             CompilerOptions.Add("-Wno-error=implicit-function-declaration");
         }
-        if (Context.Platform == "Win32")
+        if (Context.Platform.Name == "windows")
         {
             Definitions.Private.Add(new Definition("_CRT_SECURE_NO_DEPRECATE"));
             Definitions.Private.Add(new Definition("_CRT_NONSTDC_NO_DEPRECATE"));

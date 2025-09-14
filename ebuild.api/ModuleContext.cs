@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using ebuild.api.Toolchain;
 
 namespace ebuild.api;
 
@@ -10,22 +11,22 @@ public class ModuleContext
     {
         SelfReference = m.SelfReference;
         Platform = m.Platform;
-        Compiler = m.Compiler;
+        Toolchain = m.Toolchain;
         TargetArchitecture = m.TargetArchitecture;
         Options = m.Options;
         AdditionalDependencyPaths = m.AdditionalDependencyPaths;
     }
 
-    public ModuleContext(ModuleReference reference, string platform, string compiler)
+    public ModuleContext(ModuleReference reference, PlatformBase platform, IToolchain toolchain)
     {
         SelfReference = reference;
         Platform = platform;
-        Compiler = compiler;
+        Toolchain = toolchain;
     }
 
     public ModuleReference SelfReference;
-    public string Platform;
-    public string Compiler;
+    public PlatformBase Platform;
+    public IToolchain Toolchain;
     public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
     public Dictionary<string, string> Options = [];
     public List<string> AdditionalDependencyPaths = [];

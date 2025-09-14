@@ -2,11 +2,13 @@ using ebuild.api;
 
 namespace ebuild.Platforms;
 
-[Platform("Unix")]
 public class UnixPlatform : PlatformBase
 {
-    public override string? GetDefaultCompilerName()
+    public UnixPlatform() : base("unix")
     {
-        return "Gcc";
+    }
+    public override string? GetDefaultToolchainName()
+    {
+        return "gcc";
     }
 }

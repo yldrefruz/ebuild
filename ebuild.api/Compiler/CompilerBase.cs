@@ -1,19 +1,14 @@
-﻿// ReSharper disable UnusedMember.Global
-// ReSharper disable PublicConstructorInAbstractClass
-// ReSharper disable ConvertToPrimaryConstructor
-// ReSharper disable NotAccessedField.Local
-// ReSharper disable NotAccessedField.Global
+﻿using ebuild.api.Linker;
 
-using System.Reflection;
+namespace ebuild.api.Compiler;
 
-namespace ebuild.api;
-
-public abstract class CompilerBase
+public abstract class CompilerBase(ModuleBase module, IModuleInstancingParams instancingParams)
 {
     /// <summary>
     /// The module we are currently working to compile
     /// </summary>
-    protected ModuleBase? CurrentModule;
+    protected ModuleBase CurrentModule = module;
+    public IModuleInstancingParams InstancingParams = instancingParams;
 
     /// <summary>
     /// The linker to use for linking operations
@@ -25,11 +20,6 @@ public abstract class CompilerBase
 
     public bool CleanCompilation = false;
     public int? ProcessCount = null;
-
-    /// <summary>
-    /// Gets the default linker for this compiler type
-    /// </summary>
-    public abstract LinkerBase GetDefaultLinker();
 
     /// <summary>
     /// Checks if the compiler can be run in this state. 
@@ -81,12 +71,5 @@ public abstract class CompilerBase
         }
         // Copy additional linker options to the linker
         Linker.AdditionalLinkerOptions.AddRange(AdditionalLinkerOptions);
-    }
-
-    public string GetName()
-    {
-        var compilerAttribute = GetType().GetCustomAttribute<CompilerAttribute>();
-        if (compilerAttribute == null) throw new InvalidOperationException("get name requires CompilerAttribute");
-        return compilerAttribute.GetName();
     }
 }

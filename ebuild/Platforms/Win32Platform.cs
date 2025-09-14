@@ -2,12 +2,13 @@
 
 namespace ebuild.Platforms;
 
-[Platform("Win32")]
 public class Win32Platform : PlatformBase
 {
-    public override string? GetDefaultCompilerName()
+    public Win32Platform() : base("windows")
     {
-        //TODO: Load from ebuild.ini
-        return "Msvc";
+    }
+    public override string? GetDefaultToolchainName()
+    {
+        return "msvc";
     }
 }

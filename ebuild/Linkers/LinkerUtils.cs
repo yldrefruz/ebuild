@@ -19,7 +19,7 @@ public static class LinkerUtils
             ((ModuleFile)module.Context.SelfReference).Name, "build", "obj") + Path.DirectorySeparatorChar;
     }
 
-    public static string GetBinaryOutputFolder(ModuleBase module)
+    public static string GetBinaryOutputFolder(ModuleBase? module)
     {
         if (module == null)
             throw new NullReferenceException("CurrentModule is null.");

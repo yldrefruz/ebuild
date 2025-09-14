@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ebuild.api;
 using Microsoft.Extensions.Logging;
-using ebuild.api.exceptions;
 
 namespace ebuild;
 
@@ -36,16 +35,11 @@ public class ModuleFile : IModuleFile
         }
 
         ModuleFileLogger.LogDebug("Module type = {name}", moduleType.Name);
-        var constructor = moduleType.GetConstructor(new[] { typeof(ModuleContext) });
-        if (constructor == null)
-        {
-            throw new ModuleConstructorNotFoundException(moduleType);
-        }
-
+        var constructor = moduleType.GetConstructor([typeof(ModuleContext)]) ?? throw new MissingMethodException($"Constructor with parameter of type ModuleContext not found in {moduleType.FullName}");
         ModuleFileLogger.LogDebug("Module constructor is: {constructor}", constructor);
         ModuleContext context = instancingParams.ToModuleContext();
         context.SelfReference = _reference;
-        context.Options = instancingParams?.GetOptions() ?? [];
+        context.Options = instancingParams.Options ?? [];
         var created = constructor.Invoke([context]);
         var failed = false;
         foreach (var m in context.Messages)
@@ -67,7 +61,7 @@ public class ModuleFile : IModuleFile
 
         if (failed)
         {
-            throw new ModuleConstructionFailedException(moduleType);
+            throw new InvalidOperationException($"Failed to construct module of type {moduleType.FullName} due to errors.");
         }
 
         _compiledModule = (ModuleBase)created;
@@ -92,7 +86,7 @@ public class ModuleFile : IModuleFile
             {
                 _loadedAssembly = await CompileAndLoad();
             }
-            catch (ModuleFileCompilationFailedException exception)
+            catch (Exception exception)
             {
                 ModuleFileLogger.LogError("Can't find the type: {message}", exception.Message);
                 return null;
@@ -109,7 +103,7 @@ public class ModuleFile : IModuleFile
 
         if (_moduleType == null)
         {
-            throw new ModuleFileNotFoundException(_reference.GetFilePath());
+            throw new TypeLoadException($"No subclass of ModuleBase found in assembly for module file: {_reference.GetFilePath()}");
         }
 
         return _moduleType!;
@@ -143,7 +137,7 @@ public class ModuleFile : IModuleFile
         var path = moduleReference.GetFilePath();
         path = Path.GetFullPath(path, Path.GetDirectoryName(relativeTo.GetFilePath())!);
         var f = IModuleFile.TryDirToModuleFile(path, out _);
-        if (!File.Exists(f)) throw new ModuleFileNotFoundException(f);
+        if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {f}");
         var fi = new FileInfo(f);
         if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
         {
@@ -158,7 +152,7 @@ public class ModuleFile : IModuleFile
     {
         var path = moduleReference.GetFilePath();
         var f = IModuleFile.TryDirToModuleFile(path, out _);
-        if (!File.Exists(f)) throw new ModuleFileNotFoundException(f);
+        if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {f}");
         var fi = new FileInfo(f);
         if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
         {
@@ -179,7 +173,7 @@ public class ModuleFile : IModuleFile
             options: reference.GetOptions());
         if (string.IsNullOrEmpty(_reference.GetFilePath()))
         {
-            throw new ModuleFileNotFoundException(_reference.GetFilePath());
+            throw new FileNotFoundException($"Module file not found: {_reference.GetFilePath()}");
         }
 
         Name = name;
@@ -198,7 +192,7 @@ public class ModuleFile : IModuleFile
             options: reference.GetOptions());
         if (string.IsNullOrEmpty(_reference.GetFilePath()))
         {
-            throw new ModuleFileNotFoundException(_reference.GetFilePath());
+            throw new FileNotFoundException($"Module file not found: {_reference.GetFilePath()}");
         }
 
         Name = name;
@@ -488,7 +482,7 @@ public class ModuleFile : IModuleFile
         await p.WaitForExitAsync();
         if (p.ExitCode != 0)
         {
-            throw new ModuleFileCompilationFailedException(_reference.GetFilePath());
+            throw new InvalidOperationException($"Failed to compile module file: {_reference.GetFilePath()}");
         }
 
 

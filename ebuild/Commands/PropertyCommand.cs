@@ -1,40 +1,36 @@
-﻿using System.CommandLine;
+﻿using CliFx;
+using CliFx.Attributes;
+using CliFx.Exceptions;
+using CliFx.Infrastructure;
 
 namespace ebuild.Commands;
 
-public class PropertyCommand
+[Command("property", Description = "operations for properties. These are useful for creation of custom scripts or using ebuild without referencing, directly from command line")]
+public class PropertyCommand : ICommand
 {
-    private readonly Command _command = new("property",
-        "operations for properties. These are useful for creation of custom scripts or using ebuild without referencing, directly from command line");
 
-    public PropertyCommand()
+    public virtual ValueTask ExecuteAsync(IConsole console)
     {
-        _command.AddCommand(new GetCommand());
+        throw new CommandException("You must specify a subcommand.");
     }
+}
 
-    private class GetCommand
+[Command("property get", Description = "get the value of a property")]
+public class PropertyGetCommand : PropertyCommand
+{
+    [CommandParameter(0, Description = "the name of the property to get")]
+    public string PropertyName { get; init; } = string.Empty;
+
+    public override ValueTask ExecuteAsync(IConsole console)
     {
-        private readonly Command _command = new("get", "get the value of a property");
-
-        private readonly Argument<string> _propertyName =
-            new Argument<string>("name", "the name of the property").FromAmong(
-                "ebuild.api.dll"
-            );
-
-        public GetCommand()
+        if (PropertyName == "ebuild.api.dll")
         {
-            _command.AddArgument(_propertyName);
-            _command.SetHandler((context) =>
-            {
-                if (context.ParseResult.GetValueForArgument(_propertyName) == "ebuild.api.dll")
-                {
-                    Console.WriteLine(EBuild.FindEBuildApiDllPath());
-                }
-            });
+            console.Output.WriteLine(EBuild.FindEBuildApiDllPath());
         }
-
-        public static implicit operator Command(GetCommand gc) => gc._command;
+        else
+        {
+            throw new CommandException($"Unknown property '{PropertyName}'");
+        }
+        return ValueTask.CompletedTask;
     }
-
-    public static implicit operator Command(PropertyCommand pc) => pc._command;
 }

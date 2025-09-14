@@ -1,83 +1,54 @@
-﻿using System.CommandLine;
-using ebuild.Compilers;
-using Microsoft.Extensions.Logging;
+﻿using CliFx.Attributes;
+using CliFx.Exceptions;
+using CliFx.Infrastructure;
+
 
 namespace ebuild.Commands;
 
-public class CheckCommand
+[Command("check", Description = "check the module health and relevant info")]
+public class CheckCommand : ModuleCreatingCommand
 {
-    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("Check");
-
-    private enum CheckTypes
+    public override ValueTask ExecuteAsync(IConsole console)
     {
-        CircularDependency,
-        PrintDependencies
+        throw new CommandException("Please specify a check type.");
     }
-
-    private readonly Command _command = new("check", "check the module health and relevant info");
-
-    private readonly Argument<CheckTypes> _type = new("type", "the type of the check");
+}
 
 
-    public CheckCommand()
+[Command("check circular-dependencies", Description = "check the module for circular dependencies")]
+public class CheckCircularDependencyCommand : CheckCommand
+{
+    public override async ValueTask ExecuteAsync(IConsole console)
     {
-        _command.AddArgument(_type);
-        _command.AddCompilerCreationParams();
-
-        _command.SetHandler(async (context) =>
-        {
-            var type = context.ParseResult.GetValueForArgument(_type);
-            switch (type)
-            {
-                default:
-                case CheckTypes.CircularDependency:
-                    await CheckCircularDependency(
-                        ModuleInstancingParams.FromOptionsAndArguments(context));
-                    break;
-                case CheckTypes.PrintDependencies:
-                    var compilerInstancingParams =
-                        ModuleInstancingParams.FromOptionsAndArguments(context);
-                    await PrintDependencies(compilerInstancingParams);
-                    break;
-            }
-        });
-    }
-
-    private async Task CheckCircularDependency(ModuleInstancingParams moduleInstancingParams)
-    {
-        var file = (ModuleFile)moduleInstancingParams.SelfModuleReference;
-        var tree = await file.BuildOrGetDependencyTree(moduleInstancingParams);
-        if (tree == null)
-        {
-            Logger.LogError("Failed to get dependency tree for {file}", file.GetFilePath());
-            return;
-        }
-
+        var file = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
+        var tree = await file.BuildOrGetDependencyTree(ModuleInstancingParams) ?? throw new CommandException(string.Format("Failed to get dependency tree for {0}", file.GetFilePath()));
         if (tree.HasCircularDependency())
         {
-            Logger.LogError("Circular dependency detected in {file}", file.GetFilePath());
-            Logger.LogError("\n{circular_dependency_graph}", tree.GetCircularDependencyGraphString());
+            var errorMsg = string.Format("Circular dependency detected in {0}\n{1}", file.GetFilePath(), tree.GetCircularDependencyGraphString());
+            throw new CommandException(errorMsg);
         }
         else
         {
-            Logger.LogInformation("No circular dependency detected in {file}", file.GetFilePath());
+            console.Output.WriteLine("No circular dependency detected in {0}", file.GetFilePath());
         }
     }
+}
 
 
-    private async Task PrintDependencies(ModuleInstancingParams moduleInstancingParams)
+[Command("check print-dependencies", Description = "print the module dependencies")]
+public class CheckPrintDependenciesCommand : CheckCommand
+{
+    public override async ValueTask ExecuteAsync(IConsole console)
     {
-        var moduleFile = (ModuleFile)moduleInstancingParams.SelfModuleReference;
-        var depTree = await moduleFile.BuildOrGetDependencyTree(moduleInstancingParams);
+        var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
+        var depTree = await moduleFile.BuildOrGetDependencyTree(ModuleInstancingParams);
         if (depTree == null)
         {
-            Logger.LogError("Failed to get dependency tree for {file}", moduleFile.GetFilePath());
+            console.Error.WriteLine("Failed to get dependency tree for {0}", moduleFile.GetFilePath());
             return;
         }
 
-        Logger.LogInformation("Dependencies for {file}", moduleFile.GetFilePath());
-        Logger.LogInformation("\n{dependencies}", depTree.ToString());
+        console.Output.WriteLine("Dependencies for {0}", moduleFile.GetFilePath());
+        console.Output.WriteLine("\n{0}", depTree.ToString());
     }
-
-    public static implicit operator Command(CheckCommand c) => c._command;
 }

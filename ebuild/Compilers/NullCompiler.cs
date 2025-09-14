@@ -1,19 +1,36 @@
-﻿using ebuild.api;
+﻿using System.Runtime.InteropServices;
+using ebuild.api;
+using ebuild.api.Compiler;
+using ebuild.api.Toolchain;
 using ebuild.Linkers;
 using ebuild.Platforms;
 
 namespace ebuild.Compilers;
 
-[Compiler("Null")]
-public class NullCompiler : CompilerBase
+
+public class NullCompilerFactory : ICompilerFactory
+{
+    public string Name => "null";
+
+    public Type CompilerType => typeof(NullCompiler);
+
+    public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        return true;
+    }
+
+    public CompilerBase CreateCompiler(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        return new NullCompiler(module, instancingParams);
+    }
+}
+
+public class NullCompiler(ModuleBase module, IModuleInstancingParams instancingParams) : CompilerBase(module, instancingParams)
 {
     private static NullCompiler? _compiler;
 
-    private class EmptyModule : ModuleBase
+    private class EmptyModule(ModuleContext context) : ModuleBase(context)
     {
-        public EmptyModule(ModuleContext context) : base(context)
-        {
-        }
     }
 
     public static NullCompiler Get()
@@ -24,24 +41,31 @@ public class NullCompiler : CompilerBase
         {
             nullFile = "NUL:";
         }
-
-        var module = new EmptyModule(new ModuleContext
-        (
-            reference: new ModuleReference(outputType: "null",
+        var modRef = new ModuleReference(outputType: "null",
                 path: nullFile,
                 version: "0",
-                options: new Dictionary<string, string>()),
-            platform: PlatformRegistry.GetHostPlatform().GetName(),
-            compiler: CompilerRegistry.GetDefaultCompilerName()
+                options: []
+                );
+        var module = new EmptyModule(new ModuleContext
+        (
+            reference: modRef,
+            platform: PlatformRegistry.GetHostPlatform(),
+            toolchain: IToolchainRegistry.Get().GetToolchain("null")!
         ));
-        _compiler = new NullCompiler();
+        _compiler = new NullCompiler(module, new ModuleInstancingParams()
+        {
+            SelfModuleReference = modRef,
+            Configuration = "Debug",
+            Toolchain = IToolchainRegistry.Get().GetToolchain("null")!,
+            Architecture = RuntimeInformation.ProcessArchitecture,
+            Platform = PlatformRegistry.GetHostPlatform(),
+            Options = [],
+            AdditionalCompilerOptions = [],
+            AdditionalLinkerOptions = [],
+            AdditionalDependencyPaths = []
+        });
         _compiler.SetModule(module);
         return _compiler;
-    }
-
-    public override LinkerBase GetDefaultLinker()
-    {
-        return LinkerRegistry.GetInstance().Get<NullLinker>();
     }
 
     public override bool IsAvailable(PlatformBase platform)
@@ -51,7 +75,7 @@ public class NullCompiler : CompilerBase
 
     public override List<ModuleBase> FindCircularDependencies()
     {
-        return new List<ModuleBase>();
+        return [];
     }
 
     public override Task<bool> Generate(string type, object? data = null)

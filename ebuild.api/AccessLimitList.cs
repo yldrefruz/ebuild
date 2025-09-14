@@ -1,5 +1,11 @@
 ﻿namespace ebuild.api;
 
+public enum AccessLimit
+{
+    Public,
+    Private
+}
+
 public class AccessLimitList<T>
 {
     public readonly List<T> Public = [];

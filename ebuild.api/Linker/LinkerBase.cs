@@ -1,22 +1,16 @@
 using System.Reflection;
 
-namespace ebuild.api;
+namespace ebuild.api.Linker;
 
-public abstract class LinkerBase
+public abstract class LinkerBase(ModuleBase module, IModuleInstancingParams instancingParams)
 {
     /// <summary>
     /// The module we are currently working to link
     /// </summary>
-    protected ModuleBase? CurrentModule;
+    protected ModuleBase? CurrentModule = module;
+    public IModuleInstancingParams InstancingParams = instancingParams;
 
     public readonly List<string> AdditionalLinkerOptions = [];
-
-    /// <summary>
-    /// Checks if the linker can be run in this state.
-    /// </summary>
-    /// <param name="platform">The platform we are launching in.</param>
-    /// <returns>whether the linker can be run.</returns>
-    public abstract bool IsAvailable(PlatformBase platform);
 
     /// <summary>
     /// asynchronous task for setting up the linker.
@@ -35,12 +29,5 @@ public abstract class LinkerBase
     public void SetModule(ModuleBase module)
     {
         CurrentModule = module;
-    }
-
-    public string GetName()
-    {
-        var linkerAttribute = GetType().GetCustomAttribute<LinkerAttribute>();
-        if (linkerAttribute == null) throw new InvalidOperationException("get name requires LinkerAttribute");
-        return linkerAttribute.GetName();
     }
 }

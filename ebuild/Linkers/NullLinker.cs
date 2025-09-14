@@ -1,14 +1,24 @@
 using ebuild.api;
+using ebuild.api.Linker;
 
 namespace ebuild.Linkers;
 
-[Linker("Null")]
-public class NullLinker : LinkerBase
+public class NullLinkerFactory : ILinkerFactory
 {
-    public override bool IsAvailable(PlatformBase platform)
+    public string Name => "null";
+
+    public Type LinkerType => typeof(NullLinker);
+
+    public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams) => true;
+
+    public LinkerBase CreateLinker(ModuleBase module, IModuleInstancingParams instancingParams)
     {
-        return true;
+        return new NullLinker(module, instancingParams);
     }
+}
+
+public class NullLinker(ModuleBase module, IModuleInstancingParams instancingParams) : LinkerBase(module, instancingParams)
+{
 
     public override Task<bool> Setup()
     {

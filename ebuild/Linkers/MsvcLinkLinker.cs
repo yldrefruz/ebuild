@@ -3,24 +3,37 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using ebuild.api;
+using ebuild.api.Linker;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Linkers;
 
-[Linker("MsvcLink")]
+
+public class MsvcLinkLinkerFactory : ILinkerFactory
+{
+    public string Name => "msvc.link";
+
+    public Type LinkerType => typeof(MsvcLinkLinker);
+
+    public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        return instancingParams.Platform.Name == "windows";
+    }
+
+    public LinkerBase CreateLinker(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        return new MsvcLinkLinker(module, instancingParams);
+    }
+}
+
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-public class MsvcLinkLinker : LinkerBase
+public class MsvcLinkLinker(ModuleBase module, IModuleInstancingParams instancingParams) : LinkerBase(module, instancingParams)
 {
     private string _msvcCompilerRoot = string.Empty;
     private string _msvcToolRoot = string.Empty;
 
     private static readonly ILogger Logger =
         EBuild.LoggerFactory.CreateLogger("MSVC Link Linker");
-
-    public override bool IsAvailable(PlatformBase platform)
-    {
-        return platform.GetName() == "Win32";
-    }
 
     public override async Task<bool> Setup()
     {

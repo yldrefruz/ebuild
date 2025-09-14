@@ -8,14 +8,34 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.api.Compiler;
+using ebuild.api.Toolchain;
 using ebuild.Linkers;
+using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild.Compilers;
 
-[Compiler("Msvc")]
-[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
-public class MsvcCompiler : CompilerBase
+
+public class MsvcClCompilerFactory : ICompilerFactory
+{
+    public string Name => "msvc.cl";
+
+    public Type CompilerType => typeof(MsvcClCompiler);
+
+    public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        return instancingParams.Platform.Name == "windows";
+    }
+    public CompilerBase CreateCompiler(ModuleBase module, IModuleInstancingParams instancingParams)
+    {
+        var created = new MsvcClCompiler(module, instancingParams);
+        created.SetModule(module);
+        return created;
+    }
+}
+
+public class MsvcClCompiler(ModuleBase module, IModuleInstancingParams instancingParams) : CompilerBase(module, instancingParams)
 {
     private string _msvcCompilerRoot = string.Empty;
     private string _msvcToolRoot = string.Empty;
@@ -270,10 +290,12 @@ public class MsvcCompiler : CompilerBase
         foreach (var dependency in CurrentModule.Dependencies.Joined())
         {
             if (dependency == null) continue;
+            var moduleFile = (ModuleFile)dependency;
+            IModuleInstancingParams createdParams = CurrentModule.Context.InstancingParams!.CreateCopyFor(dependency);
+            var moduleInstance = await moduleFile.CreateModuleInstance(createdParams) ?? throw new Exception($"Failed to create module instance for dependency {dependency}");
             // TODO: Compile the dependencies first.
             // Post-ordered compilation.
-            IModuleInstancingParams createdParams = CurrentModule.Context.InstancingParams!.CreateCopyFor(dependency);
-            CompilerBase? compiler = await CompilerRegistry.CreateInstanceFor(createdParams);
+            CompilerBase? compiler = await InstancingParams.Toolchain.CreateCompiler(moduleInstance, createdParams);
             if (compiler == null)
             {
                 Logger.LogError("Compiler for dependency {dependency} is null.", dependency);
@@ -351,8 +373,7 @@ public class MsvcCompiler : CompilerBase
 
         // Use the linker if available, otherwise use default linker
         bool linkingSuccess = true;
-        var linker = Linker ?? GetDefaultLinker();
-        await linker.Setup();
+        var linker = await InstancingParams.Toolchain.CreateLinker(CurrentModule, InstancingParams);
         linker.SetModule(CurrentModule);
         linkingSuccess = await linker.Link();
 
@@ -551,22 +572,13 @@ public class MsvcCompiler : CompilerBase
         command += " /D__CLANGD__ "; // This is for making it work with clangd.
         if (CurrentModule == null)
             return false;
-        switch (CurrentModule.CppStandard)
+        command += CurrentModule.CppStandard switch
         {
-            case CppStandards.Cpp14:
-                command += "/D_MSVC_LANG=201402L ";
-                break;
-            case CppStandards.Cpp17:
-                command += "/D_MSVC_LANG=201703L ";
-                break;
-            default:
-            case CppStandards.Cpp20:
-                command += "/D_MSVC_LANG=202002L ";
-                break;
-            case CppStandards.CppLatest:
-                command += "/D_MSVC_LANG=202410L ";
-                break;
-        }
+            CppStandards.Cpp14 => "/D_MSVC_LANG=201402L ",
+            CppStandards.Cpp17 => "/D_MSVC_LANG=201703L ",
+            CppStandards.CppLatest => "/D_MSVC_LANG=202410L ",
+            _ => "/D_MSVC_LANG=202002L ",
+        };
         List<JsonObject> jsonElements = [];
         jsonElements.AddRange(
             CurrentModule.SourceFiles.Select(source => new JsonObject
@@ -580,9 +592,9 @@ public class MsvcCompiler : CompilerBase
             if (dependency == null) continue;
             // Add compile commands for the dependency.
             IModuleInstancingParams createdParams = CurrentModule.Context.InstancingParams!.CreateCopyFor(dependency);
-            CompilerBase? compiler = await CompilerRegistry.CreateInstanceFor(createdParams);
-            if (compiler == null)
-                continue;
+            var moduleFile = (ModuleFile)dependency;
+            var moduleInstance = await moduleFile.CreateModuleInstance(createdParams) ?? throw new Exception($"Failed to create module instance for dependency {dependency}");
+            CompilerBase compiler = await createdParams.Toolchain.CreateCompiler(moduleInstance, createdParams);
             await compiler.Setup();
             await compiler.Generate("CompileCommandsJSON", outFile);
             var contents = await File.ReadAllTextAsync(Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", outFile ?? "compile_commands.json"));
@@ -605,23 +617,9 @@ public class MsvcCompiler : CompilerBase
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         WriteIndented = true
     };
-
-    public override LinkerBase GetDefaultLinker()
-    {
-        // Choose the appropriate MSVC linker based on module type
-        if (CurrentModule?.Type == ModuleType.StaticLibrary)
-        {
-            return LinkerRegistry.GetInstance().Get<MsvcLibLinker>();
-        }
-        else
-        {
-            return LinkerRegistry.GetInstance().Get<MsvcLinkLinker>();
-        }
-    }
-
     public override bool IsAvailable(PlatformBase platform)
     {
-        return platform.GetName() == "Win32";
+        return platform.Name == "windows";
     }
 
     public override List<ModuleBase> FindCircularDependencies()
