@@ -63,10 +63,15 @@ namespace ebuild.Linkers
             }
 
             var arguments = new ArgumentBuilder();
-            Directory.CreateDirectory(Path.GetDirectoryName(settings.OutputFile)!);
+            var outputDir = Path.GetDirectoryName(settings.OutputFile);
+            if (!string.IsNullOrEmpty(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
 
             // Output file
-            arguments.Add($"-o \"{settings.OutputFile}\"");
+            arguments.Add("-o");
+            arguments.Add(settings.OutputFile);
 
             // Architecture-specific flags
             if (_targetArchitecture == Architecture.X86)
@@ -98,7 +103,8 @@ namespace ebuild.Linkers
             // Library paths
             foreach (var libPath in settings.LibraryPaths)
             {
-                arguments.Add($"-L\"{libPath}\"");
+                arguments.Add("-L");
+                arguments.Add(libPath);
             }
 
             // Convert .obj files to .o files for Unix compatibility

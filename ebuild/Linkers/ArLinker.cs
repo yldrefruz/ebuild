@@ -63,7 +63,11 @@ namespace ebuild.Linkers
             }
 
             var arguments = new ArgumentBuilder();
-            Directory.CreateDirectory(Path.GetDirectoryName(settings.OutputFile)!);
+            var outputDir = Path.GetDirectoryName(settings.OutputFile);
+            if (!string.IsNullOrEmpty(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
 
             // AR operation flags
             arguments.Add("rcs"); // r = insert files, c = create archive if it doesn't exist, s = write symbol table
