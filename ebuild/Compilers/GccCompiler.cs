@@ -47,19 +47,22 @@ namespace ebuild.Compilers
 
         public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
         {
-            // Create output directory if it doesn't exist
-            var outputDir = Path.GetDirectoryName(settings.OutputFile);
-            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-            }
-
             // Convert .obj extension to .o for Unix
             var outputFile = settings.OutputFile;
             if (outputFile.EndsWith(".obj"))
             {
                 outputFile = Path.ChangeExtension(outputFile, ".o");
             }
+
+            // Create output directory if it doesn't exist (both the final dir and any intermediate directories)
+            var outputDir = Path.GetDirectoryName(outputFile);
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+            {
+                Console.WriteLine($"Creating directory: {outputDir}");
+                Directory.CreateDirectory(outputDir);
+            }
+
+
 
             // Determine whether to use gcc or g++ based on settings
             var compilerPath = settings.CStandard != null ? _gccExecutablePath : _gxxExecutablePath;
@@ -69,7 +72,8 @@ namespace ebuild.Compilers
             
             // Basic compilation flags
             args.Add("-c"); // Compile only, do not link
-            args.Add($"-o \"{outputFile}\""); // Specify output file
+            args.Add("-o");
+            args.Add(outputFile); // Specify output file
 
             // Language standard
             if (settings.CStandard != null)
@@ -183,13 +187,15 @@ namespace ebuild.Compilers
             // Include paths
             foreach (var includePath in settings.IncludePaths)
             {
-                args.Add($"-I\"{includePath}\"");
+                args.Add("-I");
+                args.Add(includePath);
             }
 
             // Force includes
             foreach (var forceInclude in settings.ForceIncludes)
             {
-                args.Add($"-include \"{forceInclude}\"");
+                args.Add("-include");
+                args.Add(forceInclude);
             }
 
             // Fast floating point operations
@@ -209,7 +215,8 @@ namespace ebuild.Compilers
             args.AddRange(settings.OtherFlags);
 
             // Source file (must be last)
-            args.Add($"\"{settings.SourceFile}\"");
+            args.Add(settings.SourceFile);
+
 
             var startInfo = new ProcessStartInfo
             {
