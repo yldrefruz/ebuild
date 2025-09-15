@@ -8,6 +8,8 @@ namespace ebuild.Platforms
         {
         }
 
+        public override string ExtensionForCompiledSourceFile => ".o";
+
         public override string ExtensionForStaticLibrary => ".a";
 
         public override string ExtensionForSharedLibrary => ".so";

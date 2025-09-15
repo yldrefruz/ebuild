@@ -69,7 +69,12 @@ namespace ebuild.Tests.Integration
             Assert.That(Directory.Exists(buildDir), Is.True, "Build directory should exist");
 
             // Check for object files (compiled source files)
-            var objectFiles = Directory.GetFiles(buildDir, "*.obj", SearchOption.AllDirectories);
+            var objectFiles = Directory.GetFiles(buildDir, "*.o", SearchOption.AllDirectories);
+            if (objectFiles.Length == 0)
+            {
+                // Fallback to Windows .obj files if on Windows platform
+                objectFiles = Directory.GetFiles(buildDir, "*.obj", SearchOption.AllDirectories);
+            }
             Assert.That(objectFiles, Is.Not.Empty, "Should have compiled object files");
 
             // Verify that the appropriate linker is available and properly registered
@@ -111,11 +116,17 @@ namespace ebuild.Tests.Integration
             }
 
             // Verify some expected object files exist (from known zlib source files)
-            var expectedObjectFiles = new[] { "adler32.obj", "compress.obj", "crc32.obj", "deflate.obj", "inflate.obj" };
+            var expectedObjectFiles = new[] { "adler32.o", "compress.o", "crc32.o", "deflate.o", "inflate.o" };
             foreach (var expectedFile in expectedObjectFiles)
             {
                 var found = objectFiles.Any(f => Path.GetFileName(f) == expectedFile);
-                Assert.That(found, Is.True, $"Expected object file {expectedFile} should exist");
+                // If .o files not found, try .obj files (for Windows)
+                if (!found)
+                {
+                    var expectedObjFile = Path.ChangeExtension(expectedFile, ".obj");
+                    found = objectFiles.Any(f => Path.GetFileName(f) == expectedObjFile);
+                }
+                Assert.That(found, Is.True, $"Expected object file {expectedFile} (or .obj variant) should exist");
             }
         }
 

@@ -13,13 +13,34 @@ namespace ebuild.Linkers
 
         public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams)
         {
-            // AR is available on Unix-like platforms and only for static libraries
-            return instancingParams.Platform.Name != "windows" && module.Type == ModuleType.StaticLibrary;
+            // AR is available if ar exists on PATH and only for static libraries
+            return FindExecutable("ar") != null && module.Type == ModuleType.StaticLibrary;
         }
 
         public LinkerBase CreateLinker(ModuleBase module, IModuleInstancingParams instancingParams)
         {
             return new ArLinker(instancingParams.Architecture);
+        }
+
+        private static string? FindExecutable(string executableName)
+        {
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (string.IsNullOrEmpty(pathEnv))
+                return null;
+
+            var paths = pathEnv.Split(Path.PathSeparator);
+            foreach (var path in paths)
+            {
+                var fullPath = Path.Combine(path, executableName);
+                if (File.Exists(fullPath))
+                    return fullPath;
+
+                // Try with .exe extension on Windows (cross-compilation scenarios)
+                var exePath = fullPath + ".exe";
+                if (File.Exists(exePath))
+                    return exePath;
+            }
+            return null;
         }
     }
 
@@ -75,25 +96,8 @@ namespace ebuild.Linkers
             // Output archive file
             arguments.Add($"\"{settings.OutputFile}\"");
 
-            // Convert .obj files to .o files for Unix compatibility
-            var inputFiles = settings.InputFiles.Select(file => 
-            {
-                if (file.EndsWith(".obj"))
-                {
-                    var objFile = Path.ChangeExtension(file, ".o");
-                    // If the .o file doesn't exist but .obj does, this suggests a naming mismatch
-                    if (!File.Exists(objFile) && File.Exists(file))
-                    {
-                        Console.WriteLine($"Warning: Input file {file} uses Windows .obj extension but this is Unix. Looking for {objFile}");
-                        return objFile; // Still use .o extension as that's what AR expects
-                    }
-                    return objFile;
-                }
-                return file;
-            }).ToList();
-
-            // Input object files
-            arguments.AddRange(inputFiles);
+            // Input object files - use them as provided by the platform
+            arguments.AddRange(settings.InputFiles);
 
             var startInfo = new ProcessStartInfo
             {

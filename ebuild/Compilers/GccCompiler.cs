@@ -47,12 +47,8 @@ namespace ebuild.Compilers
 
         public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
         {
-            // Convert .obj extension to .o for Unix
+            // Use the output file as provided by the platform
             var outputFile = settings.OutputFile;
-            if (outputFile.EndsWith(".obj"))
-            {
-                outputFile = Path.ChangeExtension(outputFile, ".o");
-            }
 
             // Create output directory if it doesn't exist (both the final dir and any intermediate directories)
             var outputDir = Path.GetDirectoryName(outputFile);
@@ -129,6 +125,36 @@ namespace ebuild.Compilers
             {
                 args.Add("-m64");
             }
+            else if (_targetArchitecture == Architecture.Arm)
+            {
+                args.Add("-march=armv7-a");
+            }
+            else if (_targetArchitecture == Architecture.Arm64)
+            {
+                args.Add("-march=armv8-a");
+            }
+            else if (_targetArchitecture == Architecture.Armv6)
+            {
+                args.Add("-march=armv6");
+            }
+            else if (_targetArchitecture == Architecture.Wasm)
+            {
+                // WebAssembly target would need special handling
+                args.Add("-target");
+                args.Add("wasm32");
+            }
+            else if (_targetArchitecture == Architecture.S390x)
+            {
+                args.Add("-march=z196");
+            }
+            else if (_targetArchitecture == Architecture.LoongArch64)
+            {
+                args.Add("-march=loongarch64");
+            }
+            else if (_targetArchitecture == Architecture.Ppc64le)
+            {
+                args.Add("-mcpu=power8");
+            }
 
             // CPU extensions
             if (settings.CPUExtension != CPUExtensions.Default)
@@ -169,10 +195,18 @@ namespace ebuild.Compilers
                 _ => "-O2"
             });
 
-            // Debug information
+            // Debug information - setup debug file names like MSVC does
             if (settings.EnableDebugFileCreation)
             {
                 args.Add("-g"); // Generate debug information
+                
+                // For GCC, debug info is embedded in the object file by default
+                // But we can specify a separate debug file path if needed
+                var debugFile = Path.ChangeExtension(outputFile, ".debug");
+                if (!string.IsNullOrEmpty(Path.GetDirectoryName(debugFile)))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(debugFile)!);
+                }
             }
 
             // Preprocessor definitions
@@ -204,12 +238,11 @@ namespace ebuild.Compilers
                 args.Add("-ffast-math");
             }
 
-            // Position independent code (typically needed for shared libraries)
-            args.Add("-fPIC");
-
-            // Warning flags for better code quality
-            args.Add("-Wall");
-            args.Add("-Wextra");
+            // Position independent code for shared libraries (required on many platforms)
+            if (settings.ModuleType == ModuleType.SharedLibrary)
+            {
+                args.Add("-fPIC");
+            }
 
             // Additional custom flags
             args.AddRange(settings.OtherFlags);
