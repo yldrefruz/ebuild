@@ -2,67 +2,68 @@
 using System.Runtime.InteropServices;
 using ebuild.api.Toolchain;
 
-namespace ebuild.api;
-
-[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
-public class ModuleContext
+namespace ebuild.api
 {
-    public ModuleContext(ModuleContext m)
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+    public class ModuleContext
     {
-        SelfReference = m.SelfReference;
-        Platform = m.Platform;
-        Toolchain = m.Toolchain;
-        TargetArchitecture = m.TargetArchitecture;
-        Options = m.Options;
-        AdditionalDependencyPaths = m.AdditionalDependencyPaths;
-    }
-
-    public ModuleContext(ModuleReference reference, PlatformBase platform, IToolchain toolchain)
-    {
-        SelfReference = reference;
-        Platform = platform;
-        Toolchain = toolchain;
-    }
-
-    public ModuleReference SelfReference;
-    public PlatformBase Platform;
-    public IToolchain Toolchain;
-    public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
-    public Dictionary<string, string> Options = [];
-    public List<string> AdditionalDependencyPaths = [];
-    public IModuleInstancingParams? InstancingParams;
-
-
-    public FileInfo ModuleFile => new(SelfReference.GetFilePath());
-    public DirectoryInfo? ModuleDirectory => ModuleFile.Directory;
-    public string Configuration = "debug";
-    public string RequestedVersion => SelfReference.GetVersion();
-    public string RequestedOutput => SelfReference.GetOutput();
-
-
-    public class Message(string value, Message.SeverityTypes type)
-    {
-        public enum SeverityTypes
+        public ModuleContext(ModuleContext m)
         {
-            Info,
-            Warning,
-            Error
+            SelfReference = m.SelfReference;
+            Platform = m.Platform;
+            Toolchain = m.Toolchain;
+            TargetArchitecture = m.TargetArchitecture;
+            Options = m.Options;
+            AdditionalDependencyPaths = m.AdditionalDependencyPaths;
         }
 
-        public SeverityTypes GetSeverity() => type;
-        public string GetMessage() => value;
-
-        public override string ToString()
+        public ModuleContext(ModuleReference reference, PlatformBase platform, IToolchain toolchain)
         {
-            return type + " : " + value;
+            SelfReference = reference;
+            Platform = platform;
+            Toolchain = toolchain;
         }
-    }
 
-    public List<Message> Messages = [];
+        public ModuleReference SelfReference;
+        public PlatformBase Platform;
+        public IToolchain Toolchain;
+        public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
+        public Dictionary<string, string> Options = [];
+        public List<string> AdditionalDependencyPaths = [];
+        public IModuleInstancingParams? InstancingParams;
 
 
-    public void AddMessage(Message.SeverityTypes severityType, string message)
-    {
-        Messages.Add(new Message(message, severityType));
+        public FileInfo ModuleFile => new(SelfReference.GetFilePath());
+        public DirectoryInfo ModuleDirectory => ModuleFile.Directory!;
+        public string Configuration = "debug";
+        public string RequestedVersion => SelfReference.GetVersion();
+        public string RequestedOutput => SelfReference.GetOutput();
+
+
+        public class Message(string value, Message.SeverityTypes type)
+        {
+            public enum SeverityTypes
+            {
+                Info,
+                Warning,
+                Error
+            }
+
+            public SeverityTypes GetSeverity() => type;
+            public string GetMessage() => value;
+
+            public override string ToString()
+            {
+                return type + " : " + value;
+            }
+        }
+
+        public List<Message> Messages = [];
+
+
+        public void AddMessage(Message.SeverityTypes severityType, string message)
+        {
+            Messages.Add(new Message(message, severityType));
+        }
     }
 }

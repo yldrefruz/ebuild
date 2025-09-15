@@ -1,24 +1,30 @@
-﻿using System;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using ebuild.api;
 
-namespace ebuild.Platforms;
-
-[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
-public class NullPlatform : PlatformBase
+namespace ebuild.Platforms
 {
-    public NullPlatform() : base("null")
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+    public class NullPlatform : PlatformBase
     {
-    }
-    private static NullPlatform? _platform;
+        public NullPlatform() : base("null")
+        {
+        }
+        private static NullPlatform? _platform;
 
-    public override string? GetDefaultToolchainName()
-    {
-        return "null";
-    }
+        public override string ExtensionForStaticLibrary => ".a";
 
-    public static PlatformBase Get()
-    {
-        return _platform ??= new NullPlatform();
+        public override string ExtensionForSharedLibrary => ".so";
+
+        public override string ExtensionForExecutable => "";
+
+        public override string? GetDefaultToolchainName()
+        {
+            return "null";
+        }
+
+        public static PlatformBase Get()
+        {
+            return _platform ??= new NullPlatform();
+        }
     }
 }

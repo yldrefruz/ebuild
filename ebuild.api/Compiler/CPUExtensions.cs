@@ -1,0 +1,31 @@
+namespace ebuild.api.Compiler
+{
+    public enum CPUExtensions
+    {
+        Default,
+        IA32,
+        SSE,
+        SSE2,
+        AVX,
+        AVX2,
+        AVX512,
+        AVX10_1,
+        ARMv7VE,
+        VFPv4,
+        armv8_0,
+        armv8_1,
+        armv8_2,
+        armv8_3,
+        armv8_4,
+        armv8_5,
+        armv8_6,
+        armv8_7,
+        armv8_8,
+        armv8_9,
+        armv9_0,
+        armv9_1,
+        armv9_2,
+        armv9_3,
+        armv9_4
+    }
+}

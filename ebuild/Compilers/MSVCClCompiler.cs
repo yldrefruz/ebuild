@@ -1,616 +1,319 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using ebuild.api;
 using ebuild.api.Compiler;
-using Microsoft.Extensions.Logging;
 
-namespace ebuild.Compilers;
-
-
-public class MsvcClCompilerFactory : ICompilerFactory
+namespace ebuild.Compilers
 {
-    public string Name => "msvc.cl";
-
-    public Type CompilerType => typeof(MsvcClCompiler);
-
-    public bool CanCreate(ModuleBase module, IModuleInstancingParams instancingParams)
+    public partial class MsvcClCompiler : CompilerBase
     {
-        return instancingParams.Platform.Name == "windows";
-    }
-    public CompilerBase CreateCompiler(ModuleBase module, IModuleInstancingParams instancingParams)
-    {
-        var created = new MsvcClCompiler(module, instancingParams);
-        created.SetModule(module);
-        return created;
-    }
-}
 
-public class MsvcClCompiler(ModuleBase module, IModuleInstancingParams instancingParams) : CompilerBase(module, instancingParams)
-{
-    private string _msvcCompilerRoot = string.Empty;
-    private string _msvcToolRoot = string.Empty;
-
-    private static readonly Regex CLMessageRegex = new(@"^(?<file>.*)\((?<location>\d+(?:,\d+)?)\) ?: (?<type>error|warning|note) ?(?<code>[A-Z]+\d+|)?: (?<message>.+)$");
-
-    private static readonly ILogger Logger =
-        LoggerFactory
-            .Create(builder => builder.AddConsole().AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.IncludeScopes = true;
-            }))
-            .CreateLogger("MSVC Compiler");
-
-
-
-    string GetBinaryOutputFolder()
-    {
-        if (CurrentModule == null)
-            throw new NullReferenceException("CurrentModule is null.");
-        return CurrentModule.GetBinaryOutputDirectory();
-    }
-
-    public override string GetExecutablePath()
-    {
-        var msvcCompilerBin = GetMsvcCompilerBin();
-        var clPath = Path.Join(msvcCompilerBin, "cl.exe");
-        if (clPath.Contains(' '))
+        private void InitPaths(Architecture targetArchitecture)
         {
-            clPath = "\"" + clPath + "\"";
-        }
-
-        return clPath;
-    }
-
-    private string GetMsvcCompilerBin()
-    {
-        var targetArch = "x86";
-        if (CurrentModule is { Context.TargetArchitecture: Architecture.X64 })
-            targetArch = "x64";
-        var msvcCompilerBin = Path.Join(_msvcCompilerRoot, targetArch);
-        return msvcCompilerBin;
-    }
-
-    private string GetMsvcCompilerLib()
-    {
-        var targetArch = "x86";
-        if (CurrentModule is { Context.TargetArchitecture: Architecture.X64 })
-            targetArch = "x64";
-        return Path.Join(_msvcToolRoot, "lib", targetArch);
-    }
-
-    private static string GetModuleFilePath(string path, ModuleBase module)
-    {
-        var fp = Path.GetFullPath(path, module.Context.ModuleDirectory!.FullName);
-        // We are in binary, so we should resolve the path from the binary folder.
-
-
-        // TODO: This implementation doesn't make sense on the other context than building.
-        // While trying to resolve include/force include paths, this gives the wrong result.
-
-
-        // var rp = Path.GetRelativePath(Path.Join(module.Context.ModuleDirectory!.FullName, "Binaries"), path);
-        // return fp.Length > rp.Length ? rp : fp;
-        return fp;
-    }
-
-    private void MutateTarget()
-    {
-        if (CurrentModule == null)
-            return;
-        var windowsKitInfo = MSVCUtils.GetWindowsKit(CurrentModule.RequiredWindowsSdkVersion);
-        CurrentModule.Includes.Private.Add(Path.Join(_msvcToolRoot, "include"));
-        CurrentModule.LibrarySearchPaths.Private.Add(GetMsvcCompilerLib());
-        if (windowsKitInfo != null)
-        {
-            var includes = new[] { "ucrt", "um", "winrt", "shared" };
-            var searchPaths = new[] { "um", "ucrt", "ucrt_enclave" };
-
-
-            CurrentModule.Includes.Private.AddRange(includes.Select(include => Path.Join(windowsKitInfo.IncludePath, include)).Where(Directory.Exists));
-            if (CurrentModule.Context.TargetArchitecture == Architecture.X64)
+            if (PathsInitialized)
             {
-                searchPaths = [.. searchPaths.Select(p => Path.Join(p, "x64"))];
+                return;
             }
-            else
+            if (!MSVCUtils.VswhereExists())
             {
-                searchPaths = [.. searchPaths.Select(p => Path.Join(p, "x86"))];
-            }
-            CurrentModule.LibrarySearchPaths.Private.AddRange(searchPaths.Select(lib => Path.Join(windowsKitInfo.LibPath, lib)).Where(Directory.Exists));
-        }
-    }
-
-    private string CppStandardToArg(CppStandards standard)
-    {
-        var value = "/std:";
-        value += standard switch
-        {
-            CppStandards.Cpp14 => "c++14",
-            CppStandards.Cpp17 => "c++17",
-            CppStandards.CppLatest => "c++latest",
-            _ => "c++20",
-        };
-        return value;
-    }
-
-    private static string OptimizationLevelToArg(OptimizationLevel level)
-    {
-        return level switch
-        {
-            OptimizationLevel.None => "/Od",
-            OptimizationLevel.Size => "/O1",
-            OptimizationLevel.Speed => "/O2",
-            OptimizationLevel.Max => "/Ox",
-            _ => "/O2" // Default to speed optimization
-        };
-    }
-
-    private void AddModuleCompileArguments(ModuleBase inputModule, bool compilingInputModule, ref ArgumentBuilder args,
-        AccessLimit? accessLimit = null)
-    {
-        args += inputModule.Definitions.GetLimited(accessLimit).Select(definition => $"/D\"{definition}\"");
-
-        args += inputModule.Includes.GetLimited(accessLimit).Select(include => $"/I\"{GetModuleFilePath(include, inputModule)}\"");
-        args += inputModule.ForceIncludes.GetLimited(accessLimit).Select(s => $"/FI{GetModuleFilePath(s, inputModule)}");
-
-        if (compilingInputModule)
-        {
-            args += $"/D\"{(inputModule.Name ?? inputModule.Context.ModuleDirectory!.Name).ToUpperInvariant()}_BUILDING\"";
-            args += inputModule.CompilerOptions;
-            // TODO: Disabled for now to test.
-            // args += module.SourceFiles.Select(s => GetModuleFilePath(s, module));
-        }
-    }
-
-    private string GenerateCompileCommand(bool forCompilation)
-    {
-        if (CurrentModule == null) throw new NullReferenceException();
-        ArgumentBuilder args = new();
-        // ReSharper disable once StringLiteralTypo
-        args += "/nologo";
-        args += "/c";
-        args += "/EHsc";
-        args += CppStandardToArg(CurrentModule.CppStandard);
-        if (CurrentModule.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase))
-        {
-            args += "/MDd";
-            args += "/Zi";
-            args += $"/Fd\"{Path.Join(CompilerUtils.GetObjectOutputFolder(CurrentModule), CurrentModule.Name ?? CurrentModule.GetType().Name)}.pdb\"";
-            args += "/FS";
-            args += OptimizationLevelToArg(OptimizationLevel.None); // No optimization in debug
-        }
-        else
-        {
-            args += "/MD";
-            args += OptimizationLevelToArg(CurrentModule.OptimizationLevel); // Use module's optimization level
-        }
-        if (forCompilation)
-        {
-            args += $"/Fo:";
-            var objectOutputFolder = CompilerUtils.GetObjectOutputFolder(CurrentModule);
-
-            // Ensure the directory exists before MSVC tries to use it
-            try
-            {
-                if (!Directory.Exists(objectOutputFolder))
+                if (!MSVCUtils.DownloadVsWhere())
                 {
-                    Directory.CreateDirectory(objectOutputFolder);
+                    throw new Exception(
+                        $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
                 }
             }
-            catch (Exception ex)
+
+            var toolRoot = MSVCUtils.GetMsvcToolRoot().Result;
+
+            if (string.IsNullOrEmpty(toolRoot))
             {
-                Logger.LogError("Failed to create object output folder {folder}: {error}", objectOutputFolder, ex.Message);
-                throw;
+                throw new Exception("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
+
             }
 
-            args += objectOutputFolder;
-        }
-
-        if (ProcessCount != null && forCompilation)
-        {
-            args += $"/MP{(ProcessCount <= 0 ? string.Empty : ProcessCount.ToString())}";
-        }
-
-
-
-        args += AdditionalCompilerOptions;
-
-        AddModuleCompileArguments(CurrentModule, forCompilation, ref args);
-
-
-        var binaryDir = Directory.GetCurrentDirectory();
-        Directory.SetCurrentDirectory(Directory.GetParent(binaryDir)!.FullName);
-
-
-        var currentModuleFile = ModuleFile.Get(CurrentModule.Context.ModuleFile.FullName);
-        var dependencyTree = currentModuleFile.GetDependencyTree();
-        foreach (var moduleChild in dependencyTree.GetFirstLevelAndPublicDependencies())
-        {
-            // Append commands of the child module.
-            AddModuleCompileArguments(moduleChild.GetCompiledModule()!, false, ref args, AccessLimit.Public);
-        }
-
-        Directory.SetCurrentDirectory(binaryDir);
-
-        return args.ToString();
-    }
-
-    public override async Task<bool> Setup()
-    {
-        if (!MSVCUtils.VswhereExists())
-        {
-            if (!MSVCUtils.DownloadVsWhere())
+            var version = MSVCUtils.FindMsvcVersion(toolRoot).Result;
+            if (string.IsNullOrEmpty(version))
             {
-                throw new Exception(
-                    $"Can't download vswhere from {MSVCUtils.VsWhereUrl}. Please check your internet connection.");
+                throw new Exception("Couldn't find a valid msvc installation.");
+            }
+
+            var (MsvcToolRoot, MsvcToolsBinRoot) = MSVCUtils.SetupMsvcPaths(toolRoot, version);
+            MsvcToolsBinPath = Path.Join(MsvcToolsBinRoot, targetArchitecture switch
+            {
+                Architecture.X64 => "x64",
+                Architecture.X86 => "x86",
+                Architecture.Arm64 => "arm64",
+                Architecture.Arm => "arm",
+                _ => "x86"
+            });
+            CLExecutablePath = Path.Join(MsvcToolsBinPath, "cl.exe");
+            MsvcIncludePath = Path.Join(MsvcToolRoot, "include");
+            PathsInitialized = true;
+        }
+
+        public MsvcClCompiler(Architecture targetArchitecture)
+        {
+            InitPaths(targetArchitecture);
+        }
+        private static bool PathsInitialized = false;
+        private static string CLExecutablePath = "cl.exe";
+        private static string MsvcToolsBinPath = string.Empty;
+        private static string MsvcIncludePath = string.Empty;
+
+        public override Task<bool> Generate(CompilerSettings settings, CancellationToken cancellationToken, string type, object? data = null)
+        {
+            //TODO: Implement this method to generate compile commands or other artifacts as needed.
+            throw new NotImplementedException();
+        }
+
+        private async Task WaitForWriteAccess(string filePath, CancellationToken cancellationToken)
+        {
+            var retries = 100;
+            var directory = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                throw new ArgumentException("Invalid file path", nameof(filePath));
+            }
+
+            while (true)
+            {
+                try
+                {
+                    // Try to create a temporary file in the target directory
+                    var tempFilePath = Path.Combine(directory, Path.GetRandomFileName());
+                    using (var fs = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        // Successfully created the file, we have write access
+                    }
+                    File.Delete(tempFilePath); // Clean up the temporary file
+                    break; // Exit the loop if we have write access
+                }
+                catch (IOException exception)
+                {
+                    // If an IOException occurs, it means we don't have write access yet
+                    Console.WriteLine($"Waiting for write access to {filePath}. Exception: {exception.Message}");
+                    retries--;
+                    if (retries <= 0)
+                    {
+                        throw new IOException($"Exceeded maximum retries while waiting for write access to {filePath}.");
+                    }
+                    await Task.Delay(100, cancellationToken); // Wait a bit before retrying
+                }
             }
         }
 
-        var toolRoot = await MSVCUtils.GetMsvcToolRoot();
-
-        if (string.IsNullOrEmpty(toolRoot))
+        public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
         {
-            Logger.LogInformation("MSVC tool root couldn't be found, MSVC Compiler and linker setup has failed");
-            return false;
-        }
-
-        var version = await MSVCUtils.FindMsvcVersion(toolRoot, Logger);
-        if (string.IsNullOrEmpty(version))
-        {
-            Logger.LogCritical("Couldn't find a valid msvc installation.");
-            return false;
-        }
-
-        (_msvcToolRoot, _msvcCompilerRoot) = MSVCUtils.SetupMsvcPaths(toolRoot, version);
-        return true;
-    }
-
-    public override async Task<bool> Compile()
-    {
-        if (CurrentModule == null) return false;
-        Logger.LogInformation("Compiling module {moduleName}", CurrentModule.Name);
-        foreach (var dependency in CurrentModule.Dependencies.Joined())
-        {
-            if (dependency == null) continue;
-            var moduleFile = (ModuleFile)dependency;
-            IModuleInstancingParams createdParams = CurrentModule.Context.InstancingParams!.CreateCopyFor(dependency);
-            var moduleInstance = await moduleFile.CreateModuleInstance(createdParams) ?? throw new Exception($"Failed to create module instance for dependency {dependency}");
-            // TODO: Compile the dependencies first.
-            // Post-ordered compilation.
-            CompilerBase? compiler = await InstancingParams.Toolchain.CreateCompiler(moduleInstance, createdParams);
-            if (compiler == null)
-            {
-                Logger.LogError("Compiler for dependency {dependency} is null.", dependency);
-                return false;
-            }
-            await compiler.Setup();
-            await compiler.Compile();
-            Logger.LogInformation("Compiled dependency {dependency}", dependency);
-        }
-        MutateTarget();
-
-        if (CleanCompilation)
-        {
-            //Delete all obj files before compiling
-            ClearObjectAndPdbFiles(false);
-        }
-
-        // Compile each source file individually
-        var sourceFiles = CurrentModule.SourceFiles;
-        if (sourceFiles.Count == 0)
-        {
-            Logger.LogWarning("No source files to compile");
-            return true;
-        }
-
-        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
-
-        // Ensure the output directory exists with proper permissions
-        try
-        {
-            if (!Directory.Exists(outputDir))
+            // Create output directory if it doesn't exist
+            var outputDir = Path.GetDirectoryName(settings.OutputFile);
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
             {
                 Directory.CreateDirectory(outputDir);
-                Logger.LogInformation("Created object output directory: {outputDir}", outputDir);
             }
+            // Wait for write access to the directory
+            await WaitForWriteAccess(settings.OutputFile, cancellationToken);
 
-            // Test write access to the directory
-            var testFile = Path.Combine(outputDir, "test_write_access.tmp");
-            File.WriteAllText(testFile, "test");
-            File.Delete(testFile);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError("Failed to create or access output directory {outputDir}: {error}", outputDir, ex.Message);
-            throw new InvalidOperationException($"Cannot create or access output directory: {outputDir}", ex);
-        }
+            // Prepare the command line arguments for cl.exe based on CompilerSettings
+            var args = new ArgumentBuilder();
+            args.Add("/nologo"); // Suppress startup banner
+            args.Add("/c"); // Compile only, do not link
+            args.Add("/utf-8"); // Specify source file character set
+            args.Add("/volatile:iso"); // Use ISO C++ volatile semantics
+            args.Add("/permissive-"); // Standards conformance
 
-        var errorFiles = new List<string>();
-
-        // Compile each source file individually with antivirus-safe waiting
-        Logger.LogInformation("Compiling {count} source files individually", sourceFiles.Count);
-
-        foreach (var sourceFile in sourceFiles)
-        {
-            var success = await CompileSourceFileIndividually(sourceFile);
-            if (!success)
+            args.Add("/Zc:__cplusplus"); // Ensure __cplusplus is correctly defined
+            args.Add("/Zc:enumTypes"); // Enable strongly typed enums
+            args.Add("/Zc:externC");
+            args.Add("/Zc:forScope"); // Enforce for loop scope rules
+            args.Add("/Zc:gotoScope");
+            args.Add("/Zc:hiddenFriend");
+            args.Add("/Zc:implicitNoexcept"); // Enforce implicit noexcept rules
+            args.Add("/Zc:inline"); // Enforce inline rules
+            args.Add("/Zc:rvalueCast"); // Enforce rvalue cast rules
+            args.Add("/Zc:externConstexpr"); // Enforce extern constexpr rules
+            args.Add("/Zc:strictStrings");
+            args.Add("/Zc:templateScope");
+            args.Add("/Zc:preprocessor");
+            args.Add("/Zc:referenceBinding");
+            args.Add("/Zc:sizedDealloc"); // Enable sized deallocation
+            args.Add("/Zc:threadSafeInit"); // Thread-safe static initialization
+            if (settings.EnableExceptions)
             {
-                errorFiles.Add(sourceFile);
+                args.Add("/Zc:throwingNew");
             }
-        }
+            args.Add("/Zc:wchar_t"); // Treat wchar_t as a native type
 
-        if (errorFiles.Count > 0)
-        {
-            Logger.LogError("Compilation failed for the following files: {files}", string.Join(", ", errorFiles));
-            if (CleanCompilation)
+
+
+            if (settings.CPUExtension != CPUExtensions.Default)
             {
-                ClearObjectAndPdbFiles();
-            }
-            Environment.ExitCode = 1;
-            return false;
-        }
-
-        Logger.LogInformation("Successfully compiled all {count} source files", sourceFiles.Count);
-        // Directory.SetCurrentDirectory(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName);
-
-        // Use the linker if available, otherwise use default linker
-        bool linkingSuccess = true;
-        var linker = await InstancingParams.Toolchain.CreateLinker(CurrentModule, InstancingParams);
-        linker.SetModule(CurrentModule);
-        linkingSuccess = await linker.Link();
-
-        if (linkingSuccess)
-        {
-            ProcessAdditionalDependencies();
-        }
-
-        return linkingSuccess;
-    }
-
-    private async Task<bool> WaitForFileAccess(string filePath, int maxWaitSeconds)
-    {
-        if (maxWaitSeconds == 0)
-        {
-            return true; // No waiting
-        }
-
-        var startTime = DateTime.Now;
-        var isInfiniteWait = maxWaitSeconds == -1;
-
-        while (true)
-        {
-            try
-            {
-                // Try to create and immediately delete a test file in the same directory
-                var testFilePath = Path.Combine(Path.GetDirectoryName(filePath) ?? ".",
-                    $"ebuild_access_test_{Path.GetRandomFileName()}.tmp");
-
-                File.WriteAllText(testFilePath, "test");
-                File.Delete(testFilePath);
-
-                Logger.LogDebug("File access confirmed for directory: {dir}", Path.GetDirectoryName(filePath));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                var elapsed = (DateTime.Now - startTime).TotalSeconds;
-
-                if (!isInfiniteWait && elapsed >= maxWaitSeconds)
+                args.Add($"/arch:{settings.CPUExtension switch
                 {
-                    Logger.LogError("Timeout waiting for file access to {filePath} after {elapsed:F1} seconds. Last error: {error}",
-                        filePath, elapsed, ex.Message);
-                    return false;
+
+                    CPUExtensions.IA32 => "IA32",
+                    CPUExtensions.SSE => "SSE",
+                    CPUExtensions.SSE2 => "SSE2",
+                    CPUExtensions.AVX => "AVX",
+                    CPUExtensions.AVX2 => "AVX2",
+                    CPUExtensions.AVX512 => "AVX512",
+                    CPUExtensions.AVX10_1 => "AVX10.1",
+                    CPUExtensions.ARMv7VE => "ARMv7VE",
+                    CPUExtensions.VFPv4 => "VFPv4",
+                    CPUExtensions.armv8_0 => "armv8.0",
+                    CPUExtensions.armv8_1 => "armv8.1",
+                    CPUExtensions.armv8_2 => "armv8.2",
+                    CPUExtensions.armv8_3 => "armv8.3",
+                    CPUExtensions.armv8_4 => "armv8.4",
+                    CPUExtensions.armv8_5 => "armv8.5",
+                    CPUExtensions.armv8_6 => "armv8.6",
+                    CPUExtensions.armv8_7 => "armv8.7",
+                    CPUExtensions.armv8_8 => "armv8.8",
+                    CPUExtensions.armv8_9 => "armv8.9",
+                    CPUExtensions.armv9_0 => "armv9.0",
+                    CPUExtensions.armv9_1 => "armv9.1",
+                    CPUExtensions.armv9_2 => "armv9.2",
+                    CPUExtensions.armv9_3 => "armv9.3",
+                    CPUExtensions.armv9_4 => "armv9.4",
+                    CPUExtensions.Default => throw new NotSupportedException($"The specified CPU extension is not supported by MSVC: {settings.CPUExtension}"),
+                    _ => throw new NotSupportedException($"The specified CPU extension is not supported by MSVC: {settings.CPUExtension}")
+                }}");
+            }
+            args.Add($"/Fo\"{settings.OutputFile}\""); // Specify output file
+            if (settings.CStandard != null)
+            {
+                args.Add("/TC"); // Treat input as C code
+                if (settings.CStandard is CStandards.C89 or CStandards.C99)
+                {
+                    if (settings.CStandard == CStandards.C89)
+                        args.Add("/Za"); // Disable language extensions to enforce strict ANSI compliance                        
                 }
-
-                Logger.LogDebug("Waiting for file access to {filePath} (elapsed: {elapsed:F1}s): {error}",
-                    filePath, elapsed, ex.Message);
-
-                await Task.Delay(100); // Wait 500ms before retrying
-            }
-        }
-    }
-
-    private async Task<bool> CompileSourceFileIndividually(string sourceFile)
-    {
-        if (CurrentModule == null) return false;
-
-        var outputDir = CompilerUtils.GetObjectOutputFolder(CurrentModule);
-        var objFileName = Path.GetFileNameWithoutExtension(sourceFile) + ".obj";
-        var objFilePath = Path.Combine(outputDir, objFileName);
-
-        // Wait for file access if configured
-        var waitTime = Config.Get().WaitOutputFileMaxSeconds;
-        if (waitTime != 0)
-        {
-            Logger.LogDebug("Checking file access for {sourceFile}", sourceFile);
-            if (!await WaitForFileAccess(objFilePath, waitTime))
-            {
-                Logger.LogError("Failed to gain file access for {sourceFile}", sourceFile);
-                return false;
-            }
-        }
-
-        var commandContent = GenerateCompileCommand(true);
-        commandContent += $" \"{GetModuleFilePath(sourceFile, CurrentModule)}\"";
-
-        var tempFile = Path.GetTempFileName();
-        await File.WriteAllTextAsync(tempFile, commandContent);
-
-        var startInfo = new ProcessStartInfo()
-        {
-            WorkingDirectory = Directory.GetCurrentDirectory(),
-            Arguments = $"@\"{tempFile}\"",
-            FileName = GetExecutablePath(),
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            CreateNoWindow = true,
-            UseShellExecute = false,
-        };
-
-        Logger.LogDebug("Compiling {sourceFile}", Path.GetFileName(sourceFile));
-
-        using var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            Logger.LogError("Failed to start compiler process for {sourceFile}", sourceFile);
-            File.Delete(tempFile);
-            return false;
-        }
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (args.Data != null)
-            {
-                ParseMSVCCLOutput(args.Data);
-            }
-        };
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data != null)
-            {
-                ParseMSVCCLOutput(args.Data);
-            }
-        };
-        process.BeginErrorReadLine();
-        process.BeginOutputReadLine();
-        await process.WaitForExitAsync();
-
-        // Clean up temp file
-        File.Delete(tempFile);
-
-        if (process.ExitCode != 0)
-        {
-            return false;
-        }
-
-        Logger.LogDebug("Successfully compiled {sourceFile}", Path.GetFileName(sourceFile));
-        return true;
-    }
-
-    private void ParseMSVCCLOutput(string output)
-    {
-        var match = CLMessageRegex.Match(output);
-        if (match.Success)
-        {
-            var type = match.Groups["type"].Value;
-            var code = match.Groups["code"].Value;
-            var message = match.Groups["message"].Value;
-            var file = match.Groups["file"].Value;
-            var location = match.Groups["location"].Value;
-
-            if (type == "error")
-            {
-                Logger.LogError("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
-            }
-            else if (type == "warning")
-            {
-                Logger.LogWarning("{file}({location}): {type} {code}: {message}", file, location, type, code, message);
+                else
+                {
+                    args.Add("/Zc:__STDC__"); // Ensure c standard macros are correctly defined
+                    args.Add($"/std:{settings.CStandard switch
+                    {
+                        CStandards.C89 => throw new NotSupportedException("C89 is not supported by MSVC"),
+                        CStandards.C99 => throw new NotSupportedException("C99 is not supported by MSVC"),
+                        CStandards.C11 => "c11",
+                        CStandards.C17 => "c17",
+                        _ => "c17"
+                    }}");
+                }
             }
             else
             {
-                Logger.LogInformation("{line}", output);
+                args.Add($"/std:{settings.CppStandard switch
+                {
+                    CppStandards.Cpp98 => throw new NotSupportedException("C++98 is not supported by MSVC"),
+                    CppStandards.Cpp03 => throw new NotSupportedException("C++03 is not supported by MSVC"),
+                    CppStandards.Cpp11 => throw new Exception("C++11 is not supported by MSVC"),
+                    CppStandards.Cpp14 => "c++14",
+                    CppStandards.Cpp17 => "c++17",
+                    CppStandards.Cpp20 => "c++20",
+                    CppStandards.Cpp23 => "c++23preview",
+                    _ => "c++20"
+                }}");
+                args.Add("/TP"); // Treat input as C++ code
+                if (settings.CppStandard >= CppStandards.Cpp20)
+                {
+                    args.Add("/await:strict");
+                }
+                if (settings.EnableExceptions)
+                {
+                    args.Add("/EHsc"); // Enable C++ exceptions
+                }
+                else
+                {
+                    args.Add("/EHs-c-"); // Disable C++ exceptions
+                }
             }
-        }
-        else
-        {
-            Logger.LogInformation("{line}", output);
-        }
-
-    }
-
-    private void ClearObjectAndPdbFiles(bool shouldLog = true)
-    {
-        if (CurrentModule != null)
-        {
-            CompilerUtils.ClearObjectAndPdbFiles(CurrentModule, shouldLog);
-        }
-    }
-
-    private void ProcessAdditionalDependencies()
-    {
-        Logger.LogInformation("Processing additional dependencies");
-        foreach (var additionalDependency in CurrentModule!.AdditionalDependencies.Joined())
-        {
-            additionalDependency.Process(CurrentModule);
-        }
-    }
-
-    public override async Task<bool> Generate(string what, Object? data = null)
-    {
-        if (what == "CompileCommandsJSON")
-        {
-            return await GenerateCompileDatabase((string?)data);
-        }
-
-        return false;
-    }
-
-
-    private async Task<bool> GenerateCompileDatabase(string? outFile)
-    {
-        var command = GenerateCompileCommand(false);
-        command = command.Replace(@"\\", @"\");
-        command += " /D__CLANGD__ "; // This is for making it work with clangd.
-        if (CurrentModule == null)
-            return false;
-        command += CurrentModule.CppStandard switch
-        {
-            CppStandards.Cpp14 => "/D_MSVC_LANG=201402L ",
-            CppStandards.Cpp17 => "/D_MSVC_LANG=201703L ",
-            CppStandards.CppLatest => "/D_MSVC_LANG=202410L ",
-            _ => "/D_MSVC_LANG=202002L ",
-        };
-        List<JsonObject> jsonElements = [];
-        jsonElements.AddRange(
-            CurrentModule.SourceFiles.Select(source => new JsonObject
+            foreach (var def in settings.Definitions)
             {
-                { "directory", Directory.GetCurrentDirectory() },
-                { "command", GetExecutablePath() + " " + command + " " + $"\"{source}\"" },
-                { "file", source }
-            }));
-        foreach (var dependency in CurrentModule.Dependencies.Joined())
-        {
-            if (dependency == null) continue;
-            // Add compile commands for the dependency.
-            IModuleInstancingParams createdParams = CurrentModule.Context.InstancingParams!.CreateCopyFor(dependency);
-            var moduleFile = (ModuleFile)dependency;
-            var moduleInstance = await moduleFile.CreateModuleInstance(createdParams) ?? throw new Exception($"Failed to create module instance for dependency {dependency}");
-            CompilerBase compiler = await createdParams.Toolchain.CreateCompiler(moduleInstance, createdParams);
-            await compiler.Setup();
-            await compiler.Generate("CompileCommandsJSON", outFile);
-            var contents = await File.ReadAllTextAsync(Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", outFile ?? "compile_commands.json"));
-            var dependencyJson = JsonSerializer.Deserialize<List<JsonObject>>(contents);
-            if (dependencyJson != null)
-            {
-                jsonElements.AddRange(dependencyJson);
+                if (def.HasValue())
+                    args.Add($"/D{def.GetName()}={def.GetValue()}");
+                else
+                    args.Add($"/D{def.GetName()}");
             }
+            args.Add($"/I\"{MsvcIncludePath}\""); // Add MSVC include path
+            foreach (var includePath in settings.IncludePaths)
+            {
+                args.Add($"/I\"{includePath}\"");
+            }
+            foreach (var forceInclude in settings.ForceIncludes)
+            {
+                args.Add($"/FI\"{forceInclude}\"");
+            }
+            if (settings.IsDebugBuild)
+            {
+                args.Add("/MDd"); // Use the debug version of the static runtime
+                args.Add("/RTC1"); // Enable runtime error checks
+                args.Add("/sdl"); // Enable additional security checks
+            }
+            else
+            {
+                args.Add("/MD");
+            }
+            if (settings.EnableDebugFileCreation)
+            {
+                args.Add("/Zi"); // Generate complete debugging information
+                args.Add($"/Fd\"{Path.ChangeExtension(settings.OutputFile, ".pdb")}\""); // Specify PDB file for debug info   
+            }
+            if (settings.EnableFastFloatingPointOperations && settings.CStandard != CStandards.C89)
+            {
+                args.Add("/fp:fast"); // Enable fast floating-point model
+            }
+            if (settings.EnableRTTI)
+            {
+                args.Add("/GR"); // Enable RTTI
+            }
+            else
+            {
+                args.Add("/GR-"); // Disable RTTI
+            }
+            args.Add(settings.Optimization switch
+            {
+                OptimizationLevel.None => "/Od", // Disable optimization
+                OptimizationLevel.Size => "/O1", // Optimize for size
+                OptimizationLevel.Speed => "/O2", // Optimize for speed
+                OptimizationLevel.Max => "/Ox", // Full optimization
+                _ => "/O2"
+            });
+            args.AddRange(settings.OtherFlags); // Add any other custom flags
+            args.Add($"\"{settings.SourceFile}\""); // Input source file
+
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = CLExecutablePath,
+                Arguments = args.ToString(),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                WorkingDirectory = Path.GetDirectoryName(settings.SourceFile) ?? Environment.CurrentDirectory
+            };
+            var process = new Process { StartInfo = startInfo };
+            process.ErrorDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.Error.WriteLine(e.Data);
+                }
+            };
+            process.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.Out.WriteLine(e.Data);
+                }
+            };
+            process.Start();
+            process.BeginErrorReadLine();
+            process.BeginOutputReadLine();
+            await process.WaitForExitAsync(cancellationToken);
+            return process.ExitCode == 0;
         }
-
-        var serialized = JsonSerializer.Serialize(jsonElements, CompileCommandsJsonSerializerOptions);
-        await File.WriteAllTextAsync(
-            Path.Join(CurrentModule.Context.ModuleDirectory?.FullName ?? "./", outFile),
-            serialized);
-        return true;
-    }
-
-    private static readonly JsonSerializerOptions CompileCommandsJsonSerializerOptions = new JsonSerializerOptions
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
-    public override bool IsAvailable(PlatformBase platform)
-    {
-        return platform.Name == "windows";
-    }
-
-    public override List<ModuleBase> FindCircularDependencies()
-    {
-        throw new NotImplementedException();
     }
 }

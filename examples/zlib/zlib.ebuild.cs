@@ -31,8 +31,8 @@ public class ZlibEbuild : ModuleBase
         // Set default type, can be overridden by output transformers
         Type = ModuleType.StaticLibrary;
         Name = "zlib";
-        CStandard = CStandards.C17;
-        
+        CStandard = CStandards.C99;
+        UseVariants = false;
         // Setup should be called in constructor as per README
         // Call setup synchronously instead of using async/await
         SetupSync();

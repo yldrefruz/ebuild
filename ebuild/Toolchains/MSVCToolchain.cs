@@ -5,24 +5,25 @@ using ebuild.api.Toolchain;
 using ebuild.Compilers;
 using ebuild.Linkers;
 
-namespace ebuild.Toolchains;
-
-
-public class MSVCToolchain : IToolchain
+namespace ebuild.Toolchains
 {
-    public string Name => "msvc";
 
-    public ICompilerFactory? GetCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
+    public class MSVCToolchain : IToolchain
     {
-        return new MsvcClCompilerFactory();
-    }
+        public string Name => "msvc";
 
-    public ILinkerFactory? GetLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
-    {
-        if (module.Type == ModuleType.StaticLibrary)
+        public ICompilerFactory? GetCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
         {
-            return new MsvcLibLinkerFactory();
+            return new MsvcClCompilerFactory();
         }
-        return new MsvcLinkLinkerFactory();
+
+        public ILinkerFactory? GetLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
+        {
+            if (module.Type == ModuleType.StaticLibrary)
+            {
+                return new MsvcLibLinkerFactory();
+            }
+            return new MsvcLinkLinkerFactory();
+        }
     }
 }

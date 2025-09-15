@@ -1,37 +1,38 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 
-namespace ebuild;
-
-[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
-public class ModuleMeta
+namespace ebuild
 {
-    public List<string>? AdditionalCompilationFiles = new();
-    public List<string>? AdditionalReferences = new();
-
-
-
-    public string GetAdditionalReferenceNodes(string moduleProjectFileDir, string directory)
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+    public class ModuleMeta
     {
-        return AdditionalReferences?
-            .Aggregate(
-                (current, f) =>
-                    {
-                        return current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(directory, f))}\"/>\n";
-                    }
-            )
-            ?? string.Empty;
-    }
+        public List<string>? AdditionalCompilationFiles = new();
+        public List<string>? AdditionalReferences = new();
 
 
-    public string GetAdditionalCompileNodes(string moduleProjectFileDir, string directory)
-    {
-        return AdditionalCompilationFiles?
+
+        public string GetAdditionalReferenceNodes(string moduleProjectFileDir, string directory)
+        {
+            return AdditionalReferences?
                 .Aggregate(
                     (current, f) =>
                         {
-                            return current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(directory, f))}\"/>\n";
+                            return current + $"<ReferenceInclude=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(directory, f))}\"/>\n";
                         }
-                    )
-                    ?? string.Empty;
+                )
+                ?? string.Empty;
+        }
+
+
+        public string GetAdditionalCompileNodes(string moduleProjectFileDir, string directory)
+        {
+            return AdditionalCompilationFiles?
+                    .Aggregate(
+                        (current, f) =>
+                            {
+                                return current + $"<Compile Include=\"{Path.GetRelativePath(moduleProjectFileDir, Path.GetRelativePath(directory, f))}\"/>\n";
+                            }
+                        )
+                        ?? string.Empty;
+        }
     }
 }

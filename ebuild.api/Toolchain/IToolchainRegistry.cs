@@ -1,34 +1,34 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 
-namespace ebuild.api.Toolchain;
-
-
-
-
-public interface IToolchainRegistry
+namespace ebuild.api.Toolchain
 {
-    public static IToolchainRegistry Get() => EBuildInternals.Instance.GetService<IToolchainRegistry>() ?? throw new InvalidOperationException("IToolchainRegistry service not registered.");
-    void RegisterToolchain(IToolchain toolchain);
-    IToolchain? GetToolchain(string name);
-    IToolchain? GetDefaultToolchain() => GetDefaultToolchainName() != null ? GetToolchain(GetDefaultToolchainName()!) : null;
-    string? GetDefaultToolchainName();
 
 
 
-    public void RegisterAllFromAssembly(Assembly assembly)
+    public interface IToolchainRegistry
     {
-        foreach (var type in assembly.GetTypes())
+        public static IToolchainRegistry Get() => EBuildInternals.Instance.GetService<IToolchainRegistry>() ?? throw new InvalidOperationException("IToolchainRegistry service not registered.");
+        void RegisterToolchain(IToolchain toolchain);
+        IToolchain? GetToolchain(string name);
+        IToolchain? GetDefaultToolchain() => GetDefaultToolchainName() != null ? GetToolchain(GetDefaultToolchainName()!) : null;
+        string? GetDefaultToolchainName();
+
+
+
+        public void RegisterAllFromAssembly(Assembly assembly)
         {
-            if (typeof(IToolchain).IsAssignableFrom(type) && !type.IsInterface && !type.IsAbstract)
+            foreach (var type in assembly.GetTypes())
             {
-                if (Activator.CreateInstance(type) is IToolchain toolchain)
+                if (typeof(IToolchain).IsAssignableFrom(type) && !type.IsInterface && !type.IsAbstract)
                 {
-                    RegisterToolchain(toolchain);
+                    if (Activator.CreateInstance(type) is IToolchain toolchain)
+                    {
+                        RegisterToolchain(toolchain);
+                    }
                 }
             }
         }
+
+
     }
-
-
 }

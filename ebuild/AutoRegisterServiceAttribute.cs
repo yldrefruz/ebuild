@@ -1,30 +1,31 @@
 using System.Reflection;
 using ebuild.api;
 
-namespace ebuild;
-
-
-
-[AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-public sealed class AutoRegisterServiceAttribute(Type serviceType) : Attribute
+namespace ebuild
 {
-    public Type ServiceType { get; } = serviceType;
 
 
-
-    public static void RegisterAllInAssembly(Assembly assembly)
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    public sealed class AutoRegisterServiceAttribute(Type serviceType) : Attribute
     {
-        var types = assembly.GetTypes().Where(t => t.GetCustomAttributes<AutoRegisterServiceAttribute>().Any());
-        foreach (var type in types)
+        public Type ServiceType { get; } = serviceType;
+
+
+
+        public static void RegisterAllInAssembly(Assembly assembly)
         {
-            var attr = type.GetCustomAttribute<AutoRegisterServiceAttribute>();
-            if (attr != null)
+            var types = assembly.GetTypes().Where(t => t.GetCustomAttributes<AutoRegisterServiceAttribute>().Any());
+            foreach (var type in types)
             {
-                var serviceType = attr.ServiceType;
-                var instance = Activator.CreateInstance(type);
-                if (instance != null)
+                var attr = type.GetCustomAttribute<AutoRegisterServiceAttribute>();
+                if (attr != null)
                 {
-                    EBuildInternals.Instance.AddService(serviceType, instance);
+                    var serviceType = attr.ServiceType;
+                    var instance = Activator.CreateInstance(type);
+                    if (instance != null)
+                    {
+                        EBuildInternals.Instance.AddService(serviceType, instance);
+                    }
                 }
             }
         }
