@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ebuild.api;
+using ebuild.Modules.BuildGraph;
 using Microsoft.Extensions.Logging;
 
 namespace ebuild
@@ -110,25 +111,27 @@ namespace ebuild
         }
 
         private readonly ModuleReference _reference;
-        private readonly DependencyTree _dependencyTree = new();
+        private Graph? _buildGraph = null;
 
-        public async Task<IDependencyTree?> BuildOrGetDependencyTree(
-            IModuleInstancingParams moduleInstancingParams, bool compileModule = true)
+        /// <summary>
+        /// Creates or gets the build graph for this module
+        /// </summary>
+        /// <param name="moduleInstancingParams">Module instancing parameters</param>
+        /// <returns>The build graph for this module</returns>
+        public async Task<Graph?> BuildOrGetBuildGraph(IModuleInstancingParams moduleInstancingParams)
         {
-            if (_dependencyTree.IsEmpty() && !compileModule)
+            if (_buildGraph == null)
             {
-                return null;
+                var moduleInstance = await CreateModuleInstance(moduleInstancingParams);
+                if (moduleInstance == null)
+                {
+                    return null;
+                }
+                _buildGraph = new Graph(moduleInstance);
             }
 
-            if (_dependencyTree.IsEmpty())
-            {
-                await _dependencyTree.CreateFromModuleFile(this, moduleInstancingParams);
-            }
-
-            return _dependencyTree;
+            return _buildGraph;
         }
-
-        public IDependencyTree GetDependencyTree() => _dependencyTree;
 
         public readonly string Name;
 
@@ -228,12 +231,6 @@ namespace ebuild
             }
 
             return l;
-        }
-
-        public async Task<bool> HasCircularDependency(IModuleInstancingParams instancingParams)
-        {
-            var tree = await BuildOrGetDependencyTree(instancingParams);
-            return tree != null && tree.HasCircularDependency();
         }
 
         public bool HasChanged()
@@ -346,10 +343,12 @@ namespace ebuild
             var psi = new ProcessStartInfo
             {
                 WorkingDirectory = moduleProjectFileDir,
-                Arguments = $"new sln --name {Name}.ebuild_module",
+                Arguments = $"new sln --name {Name}.ebuild_module --force",
                 CreateNoWindow = true,
                 FileName = "dotnet",
-                UseShellExecute = false
+                UseShellExecute = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError = false
             };
 
             var p = new Process

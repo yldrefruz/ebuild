@@ -3,7 +3,7 @@ using ebuild.BuildGraph;
 
 namespace ebuild.Modules.BuildGraph
 {
-    class Worker(Graph graph)
+    public class Worker(Graph graph)
     {
         Graph Graph = graph;
         ModuleBase Module => Graph.Module;

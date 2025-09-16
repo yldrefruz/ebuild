@@ -173,7 +173,6 @@ namespace ebuild.api
                 strBuilder.Append(x.Key).Append('=').Append(x.Value);
             });
             _optionsString = strBuilder.ToString();
-            Console.WriteLine($"Options string: {strBuilder}");
             return _optionsString;
         }
 

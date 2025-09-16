@@ -9,15 +9,29 @@ class ModuleDeclarationNode : Node
 {
 
     public ModuleBase Module;
+    private static readonly Dictionary<string, ModuleDeclarationNode> _currentlyConstructing = new();
 
     public ModuleDeclarationNode(ModuleBase module) : base("ModuleDeclaration")
     {
         Module = module;
 
-        AddDependencies(AccessLimit.Public);
-        AddDependencies(AccessLimit.Private);
-        // Source file compile nodes.
-        var effectingChildren = GetEffectingDeclarations(this, false, true);
+        // Check if this module is already being constructed (circular dependency)
+        var moduleId = Module.Context.SelfReference.GetFilePath();
+        if (_currentlyConstructing.ContainsKey(moduleId))
+        {
+            // This is a circular dependency, we'll add the reference later
+            // Don't create compile/link nodes to avoid infinite recursion
+            return;
+        }
+
+        _currentlyConstructing[moduleId] = this;
+
+        try
+        {
+            AddDependencies(AccessLimit.Public);
+            AddDependencies(AccessLimit.Private);
+            // Source file compile nodes.
+            var effectingChildren = GetEffectingDeclarations(this, false, true);
         foreach (var sourceFile in Module.SourceFiles)
         {
             CompilerBase compiler = Module.Context.InstancingParams!.Toolchain.CreateCompiler(Module, Module.Context.InstancingParams!).Result!;
@@ -95,28 +109,46 @@ class ModuleDeclarationNode : Node
         var linkerNode = new LinkerNode(linker, linkerSettings);
         AddChild(linkerNode, AccessLimit.Private);
         //TODO: Additional Dependencies nodes.
-
+        }
+        finally
+        {
+            _currentlyConstructing.Remove(moduleId);
+        }
 
     }
 
     private static List<ModuleDeclarationNode> GetEffectingDeclarations(ModuleDeclarationNode node, bool includeSelf = false, bool includePrivateChildren = true)
     {
+        return GetEffectingDeclarations(node, includeSelf, includePrivateChildren, new HashSet<ModuleDeclarationNode>());
+    }
+
+    private static List<ModuleDeclarationNode> GetEffectingDeclarations(ModuleDeclarationNode node, bool includeSelf, bool includePrivateChildren, HashSet<ModuleDeclarationNode> visited)
+    {
+        // Prevent infinite recursion in case of circular dependencies
+        if (visited.Contains(node))
+        {
+            return new List<ModuleDeclarationNode>();
+        }
+
+        visited.Add(node);
+        
         var returnList = new List<ModuleDeclarationNode>();
         if (includeSelf)
             returnList.Add(node);
         foreach (var child in node.Children.GetLimited(AccessLimit.Public).OfType<ModuleDeclarationNode>())
         {
-            returnList.AddRange(GetEffectingDeclarations(child, true, false));
+            returnList.AddRange(GetEffectingDeclarations(child, true, false, visited));
         }
         if (includePrivateChildren)
         {
             foreach (var child in node.Children.GetLimited(AccessLimit.Private).OfType<ModuleDeclarationNode>())
             {
 
-                returnList.AddRange(GetEffectingDeclarations(child, true, false));
+                returnList.AddRange(GetEffectingDeclarations(child, true, false, visited));
             }
         }
 
+        visited.Remove(node);
         return returnList;
     }
 
@@ -124,10 +156,23 @@ class ModuleDeclarationNode : Node
     {
         foreach (var dependency in Module.Dependencies.GetLimited(accessLimit))
         {
-            Console.WriteLine($"Adding dependency {dependency} to module {Module.Name}");
             var moduleFile = ModuleFile.Get(dependency, Module.Context.SelfReference);
-            var instance = moduleFile.CreateModuleInstance(Module.Context.InstancingParams!.CreateCopyFor(dependency)).Result!;
-            var childNode = new ModuleDeclarationNode(instance);
+            var dependencyModuleId = moduleFile.GetFilePath();
+            
+            ModuleDeclarationNode childNode;
+            
+            // Check if this dependency is currently being constructed (circular dependency)
+            if (_currentlyConstructing.ContainsKey(dependencyModuleId))
+            {
+                // Reuse the existing node to create the circular reference
+                childNode = _currentlyConstructing[dependencyModuleId];
+            }
+            else
+            {
+                // Create a new instance and node
+                var instance = moduleFile.CreateModuleInstance(Module.Context.InstancingParams!.CreateCopyFor(dependency)).Result!;
+                childNode = new ModuleDeclarationNode(instance);
+            }
 
             AddChild(childNode, accessLimit);
         }

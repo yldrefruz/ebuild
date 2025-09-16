@@ -8,9 +8,6 @@ namespace ebuild.api
         public ModuleReference GetSelfReference();
         public string GetFilePath();
         public string GetDirectory();
-        public Task<IDependencyTree?> BuildOrGetDependencyTree(IModuleInstancingParams instancingParams, bool compileModule = true);
-        public IDependencyTree GetDependencyTree();
-        public Task<bool> HasCircularDependency(IModuleInstancingParams instancingParams);
         public bool HasChanged();
         public void UpdateCachedEditTime();
 
