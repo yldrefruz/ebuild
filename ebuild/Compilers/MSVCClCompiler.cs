@@ -69,7 +69,8 @@ namespace ebuild.Compilers
                 var args = GetCommand(settings, true);
                 var commandEntry = new JsonObject
                 {
-                    ["command"] = new JsonArray(JsonValue.Create(args.AsStringArray())),
+                    ["directory"] = Path.GetDirectoryName(settings.SourceFile) ?? Environment.CurrentDirectory,
+                    ["command"] = args.ToString(),
                     ["output"] = settings.OutputFile,
                     ["file"] = settings.SourceFile
                 };
