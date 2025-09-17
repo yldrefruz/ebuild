@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ebuild.Platforms;
+using System.Reflection;
 
 namespace ebuild.Tests.Integration;
 
@@ -21,8 +22,8 @@ public class ZlibEbuildTests
     {
         _zlibModulePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib", "zlib.ebuild.cs");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "zlib");
-        _ebuildExePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "bin", "Debug", "net8.0", "ebuild.dll");
-
+        var thisAssemblyLocation = Assembly.GetAssembly(GetType()).Location;
+        _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
         Directory.CreateDirectory(_testOutputDir);
     }
     [Test]

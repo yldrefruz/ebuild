@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using ebuild.api;
@@ -28,7 +29,8 @@ public class CircularDependencyUnitTests
         _testModuleAPath = Path.Combine(_circularDependencyExamplePath, "test_circular_a.ebuild.cs");
         _testModuleBPath = Path.Combine(_circularDependencyExamplePath, "test_circular_b.ebuild.cs");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "circular_dependency");
-        _ebuildExePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "ebuild", "bin", "Debug", "net8.0", "ebuild.dll");
+        var thisAssemblyLocation = Assembly.GetAssembly(GetType()).Location;
+        _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
 
         Directory.CreateDirectory(_testOutputDir);
     }
