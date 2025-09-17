@@ -1,5 +1,7 @@
 ﻿using System.CommandLine;
+using System.Text.Json.Nodes;
 using CliFx.Attributes;
+using ebuild.api;
 using ebuild.Modules.BuildGraph;
 
 
@@ -22,7 +24,7 @@ namespace ebuild.Commands
 
         public override async ValueTask ExecuteAsync(CliFx.Infrastructure.IConsole console)
         {
-        
+
             var filePath = Path.GetFullPath(ModuleInstancingParams.SelfModuleReference.GetFilePath());
 
             var workDir = Directory.Exists(filePath) ? filePath : Path.GetDirectoryName(filePath);
@@ -31,10 +33,11 @@ namespace ebuild.Commands
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var moduleInstance = (await moduleFile.CreateModuleInstance(ModuleInstancingParams)) ?? throw new Exception("Failed to create module instance");
             var graph = new Graph(moduleInstance);
-            var worker = graph.CreateWorker();
+            var worker = graph.CreateWorker<BuildWorker>();
             worker.MaxWorkerCount = ProcessCount;
             //TODO: Clean build if specified so.
-            await worker.ExecuteAsync();
+            await (worker as IWorker).ExecuteAsync();
+
         }
     }
 }

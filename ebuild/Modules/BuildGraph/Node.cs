@@ -15,7 +15,7 @@ public class Node(string name)
         child.Parent = this;
     }
     
-    public virtual Task ExecuteAsync(Worker worker, CancellationToken cancellationToken = default)
+    public virtual Task ExecuteAsync(IWorker worker, CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;
     }
@@ -61,6 +61,6 @@ public class Node(string name)
 
         visited.Remove(this);
         path.RemoveAt(path.Count - 1);
-        return new List<Node>();
+        return [];
     }
 }

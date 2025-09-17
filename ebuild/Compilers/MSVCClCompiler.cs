@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ebuild.api;
 using ebuild.api.Compiler;
 
@@ -62,8 +64,19 @@ namespace ebuild.Compilers
 
         public override Task<bool> Generate(CompilerSettings settings, CancellationToken cancellationToken, string type, object? data = null)
         {
-            //TODO: Implement this method to generate compile commands or other artifacts as needed.
-            throw new NotImplementedException();
+            if (type == "compile_commands.json" && data is List<JsonObject> objectList)
+            {
+                var args = GetCommand(settings, true);
+                var commandEntry = new JsonObject
+                {
+                    ["command"] = new JsonArray(JsonValue.Create(args.AsStringArray())),
+                    ["output"] = settings.OutputFile,
+                    ["file"] = settings.SourceFile
+                };
+                objectList.Add(commandEntry);
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
         }
 
         private async Task WaitForWriteAccess(string filePath, CancellationToken cancellationToken)
@@ -102,19 +115,15 @@ namespace ebuild.Compilers
             }
         }
 
-        public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
-        {
-            // Create output directory if it doesn't exist
-            var outputDir = Path.GetDirectoryName(settings.OutputFile);
-            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-            }
-            // Wait for write access to the directory
-            await WaitForWriteAccess(settings.OutputFile, cancellationToken);
 
+        public ArgumentBuilder GetCommand(CompilerSettings settings, bool forCompileCommands)
+        {
             // Prepare the command line arguments for cl.exe based on CompilerSettings
             var args = new ArgumentBuilder();
+            if (forCompileCommands)
+            {
+                args.Add(CLExecutablePath);
+            }
             args.Add("/nologo"); // Suppress startup banner
             args.Add("/c"); // Compile only, do not link
             args.Add("/utf-8"); // Specify source file character set
@@ -282,6 +291,20 @@ namespace ebuild.Compilers
             args.Add($"\"{settings.SourceFile}\""); // Input source file
 
 
+            return args;
+        }
+
+        public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
+        {
+            // Create output directory if it doesn't exist
+            var outputDir = Path.GetDirectoryName(settings.OutputFile);
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
+            // Wait for write access to the directory
+            await WaitForWriteAccess(settings.OutputFile, cancellationToken);
+            var args = GetCommand(settings, false);
             var startInfo = new ProcessStartInfo
             {
                 FileName = CLExecutablePath,

@@ -13,7 +13,9 @@ public class Graph(ModuleBase module)
     private List<Node>? _circularDependencyPathCache = null;
 
     public Node GetRootNode() => RootNode;
-    public Worker CreateWorker() => new(this);
+    public T CreateWorker<T>() where T : class, IWorker => CreateWorker(typeof(T)) as T ?? throw new Exception($"Failed to create worker of type {typeof(T).FullName}");
+    public IWorker CreateWorker(Type WorkerType) => (IWorker)Activator.CreateInstance(WorkerType, this)!;
+    
 
     /// <summary>
     /// Checks if the build graph has any circular dependencies

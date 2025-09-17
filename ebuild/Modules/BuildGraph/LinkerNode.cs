@@ -8,7 +8,7 @@ namespace ebuild.BuildGraph
         public LinkerBase Linker = linker;
         public LinkerSettings Settings = settings;
 
-        public override async Task ExecuteAsync(Worker worker, CancellationToken cancellationToken = default)
+        public override async Task ExecuteAsync(IWorker worker, CancellationToken cancellationToken = default)
         {
             await base.ExecuteAsync(worker, cancellationToken);
             bool result = await Linker.Link(Settings, cancellationToken);
