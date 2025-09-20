@@ -14,10 +14,12 @@ namespace ebuild.api
     {
         /// <summary>The definitions to use.</summary>
         public AccessLimitList<Definition> Definitions = new();
+        public AccessLimitList<Definition> ResourceDefinitions = new();
         public List<Definition> GlobalDefinitions = [];
 
         /// <summary>Include directories to use.</summary>
         public AccessLimitList<string> Includes = new();
+        public AccessLimitList<string> ResourceIncludes = new();
 
         /// <summary> Forced include directories to use. </summary>
         public AccessLimitList<string> ForceIncludes = new();
@@ -36,6 +38,7 @@ namespace ebuild.api
 
         /// <summary>The libraries to link.</summary>
         public AccessLimitList<string> Libraries = new();
+        public List<string> DelayLoadLibraries = [];
 
         /// <summary>The library paths to search for. Absolute or relevant</summary>
         public AccessLimitList<string> LibrarySearchPaths = new();
@@ -57,7 +60,7 @@ namespace ebuild.api
         /// <summary>
         /// Name of the output file without extension.
         /// </summary>
-        public string OutputFileName = "";
+        public string? OutputFileName = null;
         public bool EnableExceptions = false;
         public bool EnableFastFloatingPointOperations = true;
         public bool EnableRTTI = true;
@@ -92,7 +95,6 @@ namespace ebuild.api
             Context = context;
             SetOptions(context.Options);
             Name ??= context.SelfReference is IModuleFile mf ? Path.GetFileNameWithoutExtension(mf.GetFilePath()) : GetType().Name;
-            OutputFileName = string.IsNullOrEmpty(OutputFileName) ? Name : OutputFileName;
         }
 
         /// <summary>
@@ -101,6 +103,7 @@ namespace ebuild.api
         /// </summary>
         public void PostConstruction()
         {
+            OutputFileName ??= string.IsNullOrEmpty(OutputFileName) ? Name : OutputFileName;
             AdditionalDependencies.Joined().ForEach(d => d.SetOwnerModule(this));
             Dependencies.Joined().ForEach(r => r.ResolveModulePath(this));
             if (!Context.RequestedOutput.Equals("default", StringComparison.InvariantCultureIgnoreCase))
@@ -109,6 +112,7 @@ namespace ebuild.api
                     tuple.Item2.Equals(Context.RequestedOutput, StringComparison.InvariantCultureIgnoreCase));
                 foundOutputTransformer?.Item3.Invoke(this);
             }
+
         }
 
         public virtual void OnPostConstruction() { }

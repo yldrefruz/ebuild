@@ -28,8 +28,8 @@ public class MsvcLibLinkerFactory : ILinkerFactory
 public class MsvcLibLinker : LinkerBase
 {
     private static bool PathsInitialized = false;
-    private string LibExecutablePath = "lib.exe";
-    private string MsvcToolsLibPath = "";
+    private static string LibExecutablePath = string.Empty;
+    private static string MsvcToolsLibPath = "";
 
     private void InitPaths(Architecture targetArchitecture)
     {
@@ -85,6 +85,10 @@ public class MsvcLibLinker : LinkerBase
         {
             throw new NotSupportedException("MSVC Lib does not support creating static libraries. Use the MSVC Linker instead.");
         }
+        if (string.IsNullOrEmpty(LibExecutablePath))
+        {
+            throw new Exception("MSVC Lib executable path is not set.");
+        }
         var arguments = new ArgumentBuilder();
         Directory.CreateDirectory(Path.GetDirectoryName(settings.OutputFile)!);
         arguments.Add("/NOLOGO");
@@ -92,7 +96,7 @@ public class MsvcLibLinker : LinkerBase
 
         if (settings.IsDebugBuild)
         {
-            arguments.Add("/DEBUG");
+            //arguments.Add("/DEBUG");
         }
 
         arguments.AddRange(settings.LibraryPaths.Select(v => $"/LIBPATH:{v}"));
@@ -110,10 +114,12 @@ public class MsvcLibLinker : LinkerBase
         arguments.AddRange(settings.LinkerFlags);
         arguments.AddRange(settings.InputFiles);
 
+        var tempFile = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempFile, arguments.ToString());
         var startInfo = new ProcessStartInfo
         {
             FileName = LibExecutablePath,
-            Arguments = arguments.ToString(),
+            Arguments = "@\"" + tempFile + "\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
@@ -131,6 +137,7 @@ public class MsvcLibLinker : LinkerBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         await process.WaitForExitAsync(cancellationToken);
+        try { File.Delete(tempFile); } catch { /* ignore errors from deleting temp file */ }
         return process.ExitCode == 0;
     }
 }

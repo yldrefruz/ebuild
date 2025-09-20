@@ -17,6 +17,8 @@ namespace ebuild.api
         public abstract string ExtensionForStaticLibrary { get; }
         public abstract string ExtensionForSharedLibrary { get; }
         public abstract string ExtensionForExecutable { get; }
+        public virtual string ExtensionForResourceSourceFile => ".rc";
+        public virtual string ExtensionForCompiledResourceFile => ".res";
 
         public virtual IEnumerable<string> GetPlatformIncludes(ModuleBase module)
         {

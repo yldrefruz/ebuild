@@ -74,8 +74,8 @@ public class MsvcLinkLinker : LinkerBase
         });
         PathsInitialized = true;
     }
-    private string LinkExecutablePath = "link.exe";
-    private string MsvcToolsLibPath = string.Empty;
+    private static string LinkExecutablePath = "link.exe";
+    private static string MsvcToolsLibPath = string.Empty;
 
     public override async Task<bool> Link(LinkerSettings settings, CancellationToken cancellationToken = default)
     {
@@ -98,7 +98,15 @@ public class MsvcLinkLinker : LinkerBase
 
         if (settings.IsDebugBuild)
         {
-            arguments.Add("/DEBUG");
+            arguments.Add("/DEBUG:FULL");
+            arguments.Add("/INCREMENTAL");
+            arguments.Add($"/ILK:\"{settings.IntermediateDir}/{Path.GetFileNameWithoutExtension(settings.OutputFile) + ".ilk"}\"");
+        }
+        else
+        {
+            arguments.Add("/LTCG");
+            arguments.Add("/INCREMENTAL:NO");
+            arguments.Add("/OPT:REF");
         }
 
         arguments.AddRange(settings.DelayLoadLibraries.Select(v => $"/DELAYLOAD:{v}"));
@@ -129,10 +137,12 @@ public class MsvcLinkLinker : LinkerBase
         arguments.AddRange(settings.LinkerFlags);
         arguments.AddRange(settings.InputFiles);
 
+        var tempFile = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempFile, arguments.ToString());
         var startInfo = new ProcessStartInfo
         {
             FileName = LinkExecutablePath,
-            Arguments = arguments.ToString(),
+            Arguments = "@\"" + tempFile + "\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
@@ -150,6 +160,7 @@ public class MsvcLinkLinker : LinkerBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         await process.WaitForExitAsync(cancellationToken);
+        try { File.Delete(tempFile); } catch { /* ignore errors from deleting temp file */ }
         return process.ExitCode == 0;
     }
 }

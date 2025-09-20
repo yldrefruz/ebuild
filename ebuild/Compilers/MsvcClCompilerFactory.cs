@@ -18,5 +18,11 @@ namespace ebuild.Compilers
             var created = new MsvcClCompiler(instancingParams.Architecture);
             return created;
         }
+
+        public string GetExecutablePath(ModuleBase module, IModuleInstancingParams instancingParams)
+        {
+            MsvcClCompiler.InitPaths(instancingParams.Architecture);
+            return MsvcClCompiler.CLExecutablePath;
+        }
     }
 }

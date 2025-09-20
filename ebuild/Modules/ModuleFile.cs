@@ -140,7 +140,7 @@ namespace ebuild
             var path = moduleReference.GetFilePath();
             path = Path.GetFullPath(path, Path.GetDirectoryName(relativeTo.GetFilePath())!);
             var f = IModuleFile.TryDirToModuleFile(path, out _);
-            if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {f}");
+            if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {path}");
             var fi = new FileInfo(f);
             if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
             {
@@ -155,7 +155,7 @@ namespace ebuild
         {
             var path = moduleReference.GetFilePath();
             var f = IModuleFile.TryDirToModuleFile(path, out _);
-            if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {f}");
+            if (!File.Exists(f)) throw new FileNotFoundException($"Module file not found: {moduleReference.GetFilePath()}");
             var fi = new FileInfo(f);
             if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
             {
@@ -364,6 +364,16 @@ namespace ebuild
             await p.WaitForExitAsync();
         }
 
+
+        private static Assembly LoadAssembly(string path)
+        {
+            var openFile = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            byte[] buffer = new byte[openFile.Length];
+            openFile.ReadExactly(buffer);
+            openFile.Close();
+            return Assembly.Load(buffer);
+        }
+
         /// <summary>
         /// Compile the module file and load the assembly.
         /// There are massive security concerns about this as the loaded assembly can do whatever it wants.
@@ -378,7 +388,9 @@ namespace ebuild
             var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
             var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, Name, Name + ".ebuild_module.dll");
             if (!HasChanged())
-                return Assembly.LoadFile(toLoadDllFile);
+            {
+                return LoadAssembly(toLoadDllFile);
+            }
             var logger = LoggerFactory
                 .Create(builder => builder.AddConsole().AddSimpleConsole(options => options.SingleLine = true))
                 .CreateLogger("Module File Compiler");
@@ -492,7 +504,7 @@ namespace ebuild
             UpdateCachedEditTime();
             logger.LogDebug("module {name} cache time is updated", Name);
             logger.LogDebug("loading the assembly {dll}", toLoadDllFile);
-            return Assembly.LoadFile(toLoadDllFile);
+            return LoadAssembly(toLoadDllFile);
         }
         // TODO: This requires a better way to compare variants. And treat the variants as different files.
         public override bool Equals(object? obj)

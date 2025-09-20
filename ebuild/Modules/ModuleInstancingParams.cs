@@ -21,7 +21,7 @@ namespace ebuild
                 Logger = Logger,
                 AdditionalCompilerOptions = AdditionalCompilerOptions,
                 AdditionalLinkerOptions = AdditionalLinkerOptions,
-                AdditionalDependencyPaths = AdditionalDependencyPaths
+                AdditionalDependencyPaths = AdditionalDependencyPaths,
             };
         }
 
@@ -45,10 +45,18 @@ namespace ebuild
             Messages = [],
             TargetArchitecture = Architecture,
             InstancingParams = this,
+
         };
 
 
 
         public static explicit operator ModuleContext(ModuleInstancingParams p) => p.ToModuleContext();
+
+
+        public override string ToString()
+        {
+            return
+                $"ModuleInstancingParams(SelfModuleReference={SelfModuleReference}, Configuration={Configuration}, Toolchain={Toolchain.Name}, Architecture={Architecture}, Platform={Platform.Name})";
+        }
     }
 }

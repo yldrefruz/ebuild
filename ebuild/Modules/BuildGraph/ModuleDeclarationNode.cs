@@ -25,6 +25,10 @@ class ModuleDeclarationNode : Node
         }
 
         _currentlyConstructing[moduleId] = this;
+        if (module.Type == ModuleType.LibraryLoader)
+        {
+            return;
+        }
 
         try
         {
@@ -39,13 +43,34 @@ class ModuleDeclarationNode : Node
                     // Skip header files.
                     continue;
                 }
-                CompilerBase compiler = Module.Context.InstancingParams!.Toolchain.CreateCompiler(Module, Module.Context.InstancingParams!).Result!;
-                var compileNode = new CompileSourceFileNode(compiler, new CompilerSettings
+                var resourceSourceExtension = Module.Context.Platform.ExtensionForResourceSourceFile;
+                var isResourceFile = Path.GetExtension(sourceFile) == Module.Context.Platform.ExtensionForResourceSourceFile;
+                CompilerBase compiler = isResourceFile ? Module.Context.InstancingParams!.Toolchain.CreateResourceCompiler(Module, Module.Context.InstancingParams!).Result! : Module.Context.InstancingParams!.Toolchain.CreateCompiler(Module, Module.Context.InstancingParams!).Result!;
+                if (compiler == null)
+                {
+                    if (isResourceFile)
+                    {
+                        // skip resource files if no resource compiler is available.
+                        Console.WriteLine($"Skipping resource file {sourceFile} as no resource compiler is available in toolchain {Module.Context.Toolchain.Name}");
+                        continue;
+                    }
+                    else
+                    {
+                        throw new Exception($"No compiler available for module {Module.Name} in toolchain {Module.Context.Toolchain.Name}");
+                    }
+                }
+                List<Definition> sourceFileDefinitions = [.. effectingChildren.SelectMany(v => v.Module.Definitions.Public), .. Module.Definitions.Joined(), .. Module.Context.Platform.GetPlatformDefinitions(Module)];
+                List<string> sourceFileIncludePaths = [.. effectingChildren.SelectMany(v => v.Module.Includes.Public.Select(c => Path.GetFullPath(c, v.Module.Context.ModuleDirectory.FullName))), .. Module.Includes.Joined().Select(c => Path.GetFullPath(c, Module.Context.ModuleDirectory.FullName)), .. Module.Context.Platform.GetPlatformIncludes(Module)];
+
+                List<Definition> resourceFileDefinitions = [.. effectingChildren.SelectMany(v => v.Module.ResourceDefinitions.Public), .. Module.ResourceDefinitions.Joined()];
+                List<string> resourceFileIncludePaths = [.. effectingChildren.SelectMany(v => v.Module.ResourceIncludes.Public.Select(c => Path.GetFullPath(c, v.Module.Context.ModuleDirectory.FullName))), .. Module.ResourceIncludes.Joined().Select(c => Path.GetFullPath(c, Module.Context.ModuleDirectory.FullName))];
+                var compileSettings = new CompilerSettings
                 {
                     SourceFile = Path.GetFullPath(sourceFile, Module.Context.ModuleDirectory.FullName),
-                    OutputFile = Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sourceFile) + ".obj"),
+                    OutputFile = Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sourceFile) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile)),
                     TargetArchitecture = Module.Context.TargetArchitecture,
                     ModuleType = Module.Type,
+                    IntermediateDir = CompilerUtils.GetObjectOutputFolder(Module),
                     CPUExtension = Module.CPUExtension,
                     EnableExceptions = Module.EnableExceptions,
                     EnableFastFloatingPointOperations = Module.EnableFastFloatingPointOperations,
@@ -54,12 +79,13 @@ class ModuleDeclarationNode : Node
                     EnableDebugFileCreation = Module.EnableDebugFileCreation ?? Module.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase),
                     CppStandard = Module.CppStandard,
                     CStandard = Module.CStandard,
-                    Definitions = [.. effectingChildren.SelectMany(v => v.Module.Definitions.Public), .. Module.Definitions.Joined(), .. Module.Context.Platform.GetPlatformDefinitions(Module)],
-                    IncludePaths = [.. effectingChildren.SelectMany(v => v.Module.Includes.Public.Select(c => Path.GetFullPath(c, v.Module.Context.ModuleDirectory.FullName))), .. Module.Includes.Joined().Select(c => Path.GetFullPath(c, Module.Context.ModuleDirectory.FullName)), .. Module.Context.Platform.GetPlatformIncludes(Module)],
+                    Definitions = isResourceFile ? resourceFileDefinitions : sourceFileDefinitions,
+                    IncludePaths = isResourceFile ? resourceFileIncludePaths : sourceFileIncludePaths,
                     ForceIncludes = [.. effectingChildren.SelectMany(v => v.Module.ForceIncludes.Public.Select(c => Path.GetFullPath(c, v.Module.Context.ModuleDirectory.FullName))), .. Module.ForceIncludes.Joined().Select(c => Path.GetFullPath(c, Module.Context.ModuleDirectory.FullName))],
                     Optimization = Module.OptimizationLevel,
                     OtherFlags = [.. Module.CompilerOptions, .. Module.Context.Platform.GetPlatformCompilerFlags(Module)],
-                });
+                };
+                var compileNode = new CompileSourceFileNode(compiler!, compileSettings);
 
                 AddChild(compileNode, AccessLimit.Private);
             }
@@ -68,11 +94,11 @@ class ModuleDeclarationNode : Node
             // first we need to create the input list for the linker.
             List<string> linkInputs = [];
             // Add the object files to the link inputs.
-            linkInputs.AddRange(Module.SourceFiles.Where(sf =>
+            linkInputs.AddRange(Module.SourceFiles.Where(sf => Path.GetExtension(sf) is not (".h" or ".hpp" or ".inl")).Select(sf =>
             {
-                var ext = Path.GetExtension(sf);
-                return ext is not (".h" or ".hpp" or ".inl");
-            }).Select(sf => Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sf) + Module.Context.Platform.ExtensionForCompiledSourceFile)));
+                var isResourceFile = Path.GetExtension(sf) == Module.Context.Platform.ExtensionForResourceSourceFile;
+                return Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sf) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile));
+            }));
             // Add the libraries to the link inputs.
             linkInputs.AddRange(Module.Libraries.Joined());
             linkInputs.AddRange(effectingChildren.SelectMany(v => v.Module.Libraries.Public));
@@ -83,7 +109,7 @@ class ModuleDeclarationNode : Node
             libraryPaths.AddRange(Module.LibrarySearchPaths.Joined());
             libraryPaths.AddRange(Module.Context.Platform.GetPlatformLibrarySearchPaths(Module));
             // Get the output binaries for the dependencies.
-            foreach (var dependency in effectingChildren)
+            foreach (var dependency in Children.Joined().Where(a => a is ModuleDeclarationNode).Select(a => (ModuleDeclarationNode)a))
             {
                 switch (dependency.Module.Type)
                 {
@@ -99,6 +125,10 @@ class ModuleDeclarationNode : Node
                     case ModuleType.ExecutableWin32:
                         // We don't link against executables.
                         break;
+                    case ModuleType.LibraryLoader:
+                        // We don't link against library loaders.
+                        // We link against their public children instead. Which is handled by GetEffectingDeclarations.
+                        break;
                     default:
                         throw new NotImplementedException($"Unknown module type {dependency.Module.Type}");
                 }
@@ -109,10 +139,12 @@ class ModuleDeclarationNode : Node
                 OutputFile = Module.GetBinaryOutputPath(),
                 OutputType = Module.Type,
                 TargetArchitecture = Module.Context.TargetArchitecture,
+                IntermediateDir = CompilerUtils.GetObjectOutputFolder(Module),
                 LibraryPaths = [.. libraryPaths],
                 LinkerFlags = [.. Module.Context.InstancingParams!.AdditionalLinkerOptions, .. Module.Context.Platform.GetPlatformLinkerFlags(Module)],
                 ShouldCreateDebugFiles = Module.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase),
                 IsDebugBuild = Module.Context.Configuration.Equals("debug", StringComparison.InvariantCultureIgnoreCase),
+                DelayLoadLibraries = [.. Module.DelayLoadLibraries]
             };
             var linker = Module.Context.Toolchain.CreateLinker(Module, Module.Context.InstancingParams!).Result!;
             var linkerNode = new LinkerNode(linker, linkerSettings);

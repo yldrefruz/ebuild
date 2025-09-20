@@ -17,6 +17,11 @@ namespace ebuild.Toolchains
             return new MsvcClCompilerFactory();
         }
 
+        public ICompilerFactory? GetResourceCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
+        {
+            return new MsvcRcCompilerFactory();
+        }
+
         public ILinkerFactory? GetLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams)
         {
             if (module.Type == ModuleType.StaticLibrary)

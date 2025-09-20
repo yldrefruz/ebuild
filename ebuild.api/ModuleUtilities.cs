@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using System;
+using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace ebuild.api
@@ -8,7 +9,7 @@ namespace ebuild.api
         public static string[] GetAllSourceFiles(this ModuleBase module, string root, params string[] extensions)
         {
             List<string> files = [];
-            string findAt = Path.Join(module.Context.ModuleDirectory!.FullName, root);
+            string findAt = Path.GetFullPath(root, module.Context.ModuleDirectory!.FullName);
             foreach (var extension in extensions)
             {
                 files.AddRange(Directory.GetFiles(findAt, "*." + extension, SearchOption.AllDirectories));
@@ -29,10 +30,11 @@ namespace ebuild.api
                 if (ExpectedHash == null || (ExpectedHash != null && hash.SequenceEqual(Convert.FromHexString(ExpectedHash))))
                 {
                     //already have the file and it matches the hash
+                    Console.WriteLine("File found with matching hash");
                     return true;
                 }
             }
-        
+            Console.WriteLine($"Downloading \"{Url}\" to \"{archiveDir}\"");
             var response = client.GetAsync(Url).Result;
             if (response.IsSuccessStatusCode)
             {

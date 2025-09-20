@@ -162,5 +162,13 @@ namespace ebuild.api
         [GeneratedRegex(
                 @"^(?:(?<output>\w+):)?(?<path>(?:[^/\\]*[/\\])*(?:[^@?!]*))(?:@(?<version>\w+))?(?:\?(?<options>(?:[\w-_]+=[\w-_]+;?)*))?$")]
         private static partial Regex ModuleReferenceStringRegex();
+
+
+
+        public override string ToString()
+        {
+            var optionsString = string.Join(";", _options.Select(kv => $"{kv.Key}={kv.Value}"));
+            return $"{(_output != "default" ? _output + ":" : string.Empty)}{_path}{(_version != "latest" ? "@" + _version : string.Empty)}{(!string.IsNullOrEmpty(optionsString) ? "?" + optionsString : string.Empty)}";
+        }
     }
 }

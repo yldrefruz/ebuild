@@ -17,6 +17,7 @@ namespace ebuild.api.Compiler
         public required string OutputFile;
         public required Architecture TargetArchitecture;
         public required ModuleType ModuleType;
+        public required string IntermediateDir;
         public CPUExtensions CPUExtension = CPUExtensions.Default;
         public bool EnableExceptions = false;
         public bool EnableFastFloatingPointOperations = true;
@@ -30,5 +31,6 @@ namespace ebuild.api.Compiler
         public CStandards? CStandard = null;
         public OptimizationLevel Optimization = OptimizationLevel.Speed;
         public List<string> OtherFlags = [];
+
     }
 }

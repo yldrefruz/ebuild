@@ -14,6 +14,12 @@
             return this;
         }
 
+        public ArgumentBuilder Remove(string command)
+        {
+            _args.Remove(command);
+            return this;
+        }
+
         private readonly List<string> _args = [];
 
 

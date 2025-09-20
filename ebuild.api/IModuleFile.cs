@@ -40,6 +40,15 @@ namespace ebuild.api
                 name = new DirectoryInfo(path).Name;
                 return Path.Join(path, "ebuild.cs"); // ebuild.cs is the third most preferred one.
             }
+            {
+                var tryingPath = path + ".ebuild.cs";
+                if (File.Exists(tryingPath))
+                {
+                    name = Path.GetFileNameWithoutExtension(path);
+                    return Path.Join(tryingPath);
+                }
+
+            }
 
             name = string.Empty;
             return string.Empty;

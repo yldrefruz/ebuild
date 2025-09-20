@@ -12,8 +12,7 @@ namespace ebuild.api.Toolchain
 
         ICompilerFactory? GetCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams);
         ILinkerFactory? GetLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams);
-
-
+        ICompilerFactory? GetResourceCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams) => null;
 
 
 
@@ -33,6 +32,17 @@ namespace ebuild.api.Toolchain
                 throw new Exception($"Linker factory '{factory.Name}' cannot create linker for module '{module.Name}' with toolchain '{Name}'");
             var linker = factory.CreateLinker(module, instancingParams);
             return Task.FromResult(linker);
+        }
+
+        Task<CompilerBase?> CreateResourceCompiler(ModuleBase module, IModuleInstancingParams instancingParams)
+        {
+            var factory = GetResourceCompilerFactory(module, instancingParams);
+            if (factory == null)
+                return Task.FromResult<CompilerBase?>(null);
+            if (!factory.CanCreate(module, instancingParams))
+                throw new Exception($"Resource compiler factory '{factory.Name}' cannot create resource compiler for module '{module.Name}' with toolchain '{Name}'");
+            var compiler = factory.CreateCompiler(module, instancingParams);
+            return Task.FromResult<CompilerBase?>(compiler);
         }
     }
 }

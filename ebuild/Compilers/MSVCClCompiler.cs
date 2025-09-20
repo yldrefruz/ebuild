@@ -10,7 +10,7 @@ namespace ebuild.Compilers
     public partial class MsvcClCompiler : CompilerBase
     {
 
-        private void InitPaths(Architecture targetArchitecture)
+        public static void InitPaths(Architecture targetArchitecture)
         {
             if (PathsInitialized)
             {
@@ -58,9 +58,9 @@ namespace ebuild.Compilers
             InitPaths(targetArchitecture);
         }
         private static bool PathsInitialized = false;
-        private static string CLExecutablePath = "cl.exe";
-        private static string MsvcToolsBinPath = string.Empty;
-        private static string MsvcIncludePath = string.Empty;
+        public static string CLExecutablePath = "cl.exe";
+        public static string MsvcToolsBinPath = string.Empty;
+        public static string MsvcIncludePath = string.Empty;
 
         public override Task<bool> Generate(CompilerSettings settings, CancellationToken cancellationToken, string type, object? data = null)
         {
@@ -257,11 +257,18 @@ namespace ebuild.Compilers
             {
                 args.Add("/MDd"); // Use the debug version of the static runtime
                 args.Add("/RTC1"); // Enable runtime error checks
-                args.Add("/sdl"); // Enable additional security checks
+                if (!settings.OtherFlags.Contains("/sdl-"))
+                {
+                    args.Add("/sdl"); // Enable additional security checks    
+                }
+
             }
             else
             {
                 args.Add("/MD");
+                if(settings.ModuleType != ModuleType.StaticLibrary)
+                    args.Add("/GL");
+                args.Add("/Gy");
             }
             if (settings.EnableDebugFileCreation)
             {
@@ -280,7 +287,7 @@ namespace ebuild.Compilers
             {
                 args.Add("/GR-"); // Disable RTTI
             }
-            args.Add(settings.Optimization switch
+            args.Add(settings.IsDebugBuild ? "/Od" : settings.Optimization switch
             {
                 OptimizationLevel.None => "/Od", // Disable optimization
                 OptimizationLevel.Size => "/O1", // Optimize for size
@@ -306,10 +313,12 @@ namespace ebuild.Compilers
             // Wait for write access to the directory
             await WaitForWriteAccess(settings.OutputFile, cancellationToken);
             var args = GetCommand(settings, false);
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, args.ToString(), cancellationToken);
             var startInfo = new ProcessStartInfo
             {
                 FileName = CLExecutablePath,
-                Arguments = args.ToString(),
+                Arguments = "@\"" + tempFile + "\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -337,6 +346,7 @@ namespace ebuild.Compilers
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync(cancellationToken);
+            try { File.Delete(tempFile); } catch { /* ignore errors from deleting temp file */ }
             return process.ExitCode == 0;
         }
     }

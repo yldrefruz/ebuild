@@ -32,13 +32,20 @@ namespace ebuild.Compilers
                 var fullPath = Path.Combine(path, executableName);
                 if (File.Exists(fullPath))
                     return fullPath;
-                
+
                 // Try with .exe extension on Windows
                 var exePath = fullPath + ".exe";
                 if (File.Exists(exePath))
                     return exePath;
             }
             return null;
+        }
+
+
+        public string GetExecutablePath(ModuleBase module, IModuleInstancingParams instancingParams)
+        {
+            var path = FindExecutable("gcc") ?? throw new Exception("GCC executable not found in PATH.");
+            return path;
         }
     }
 }

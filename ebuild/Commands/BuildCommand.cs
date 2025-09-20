@@ -24,12 +24,6 @@ namespace ebuild.Commands
 
         public override async ValueTask ExecuteAsync(CliFx.Infrastructure.IConsole console)
         {
-
-            var filePath = Path.GetFullPath(ModuleInstancingParams.SelfModuleReference.GetFilePath());
-
-            var workDir = Directory.Exists(filePath) ? filePath : Path.GetDirectoryName(filePath);
-            // TODO: don't touch the current directory. Make all paths absolute instead.
-            Directory.SetCurrentDirectory(workDir!);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var moduleInstance = (await moduleFile.CreateModuleInstance(ModuleInstancingParams)) ?? throw new Exception("Failed to create module instance");
             var graph = new Graph(moduleInstance);

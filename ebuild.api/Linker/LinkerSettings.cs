@@ -11,6 +11,7 @@ namespace ebuild.api.Linker
         public required string OutputFile;
         public required ModuleType OutputType;
         public required Architecture TargetArchitecture;
+        public required string IntermediateDir;
         public string[] LibraryPaths = [];
         public string[] LinkerFlags = [];
         public bool ShouldCreateDebugFiles = false;

@@ -13,7 +13,7 @@ namespace ebuild.BuildGraph
             await base.ExecuteAsync(worker, cancellationToken);
             bool result = await Linker.Link(Settings, cancellationToken);
             if (!result)
-                throw new Exception($"Linking failed for module {Settings.OutputFile}");
+                throw new Exception($"Linking failed for output file {Settings.OutputFile}");
         }
 
         public override string ToString() => $"- LinkerNode({Settings.OutputFile})";
