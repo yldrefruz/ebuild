@@ -34,7 +34,6 @@ namespace ebuild.api
             {
                 _output = match.Groups["output"].Value;
             }
-
             if (match.Groups["version"].Success)
             {
                 _version = match.Groups["version"].Value;
@@ -160,7 +159,7 @@ namespace ebuild.api
         }
 
         [GeneratedRegex(
-                @"^(?:(?<output>\w+):)?(?<path>(?:[^/\\]*[/\\])*(?:[^@?!]*))(?:@(?<version>\w+))?(?:\?(?<options>(?:[\w-_]+=[\w-_]+;?)*))?$")]
+                @"^(?:(?<output>\w+):)?(?<path>(?:[^\/\\]*[\/\\])*(?:[^@?!]*))(?:@(?<version>\w+))?(?:\?(?<options>(?:[\w\-_]+=[\w\-_]+;?)*))?$")]
         private static partial Regex ModuleReferenceStringRegex();
 
 

@@ -19,7 +19,7 @@ namespace ebuild.Linkers
 
         public LinkerBase CreateLinker(ModuleBase module, IModuleInstancingParams instancingParams)
         {
-            return new GccLinker(instancingParams.Architecture);
+            return new GccLinker(instancingParams.Architecture, module.CStandard == null);
         }
 
         private static string? FindExecutable(string executableName)
@@ -48,11 +48,15 @@ namespace ebuild.Linkers
     {
         private readonly Architecture _targetArchitecture;
         private readonly string _gccExecutablePath;
+        private readonly string _gxxExecutablePath;
+        private readonly bool _useGxx;
 
-        public GccLinker(Architecture targetArchitecture)
+        public GccLinker(Architecture targetArchitecture, bool useGxx = true)
         {
             _targetArchitecture = targetArchitecture;
             _gccExecutablePath = FindExecutable("gcc") ?? throw new Exception("GCC compiler not found in PATH");
+            _gxxExecutablePath = FindExecutable("g++") ?? throw new Exception("G++ compiler not found in PATH");
+            _useGxx = useGxx;
         }
 
         private static string? FindExecutable(string executableName)
@@ -82,6 +86,7 @@ namespace ebuild.Linkers
             {
                 throw new NotSupportedException("GCC linker does not support creating static libraries. Use AR instead.");
             }
+
 
             var arguments = new ArgumentBuilder();
             var outputDir = Path.GetDirectoryName(settings.OutputFile);
@@ -164,9 +169,11 @@ namespace ebuild.Linkers
             // Additional linker flags
             arguments.AddRange(settings.LinkerFlags);
 
+            Console.WriteLine($"Running Linker: {(_useGxx ? _gxxExecutablePath : _gccExecutablePath)} {arguments}");
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = _gccExecutablePath,
+                FileName = _useGxx ? _gxxExecutablePath : _gccExecutablePath,
                 Arguments = arguments.ToString(),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
