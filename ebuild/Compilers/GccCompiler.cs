@@ -239,7 +239,7 @@ namespace ebuild.Compilers
             }
 
             // Position independent code for shared libraries (required on many platforms)
-            if (settings.ModuleType == ModuleType.SharedLibrary)
+            // if (settings.ModuleType == ModuleType.SharedLibrary)
             {
                 args.Add("-fPIC");
             }
@@ -249,6 +249,8 @@ namespace ebuild.Compilers
 
             // Source file (must be last)
             args.Add(settings.SourceFile);
+
+            Console.WriteLine($"Running Compiler: {compilerPath} {args}");
 
 
             var startInfo = new ProcessStartInfo

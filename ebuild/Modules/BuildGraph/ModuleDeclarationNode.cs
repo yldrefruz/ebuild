@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using ebuild.api;
 using ebuild.api.Compiler;
 using ebuild.api.Linker;
@@ -36,6 +37,7 @@ class ModuleDeclarationNode : Node
             AddDependencies(AccessLimit.Private);
             // Source file compile nodes.
             var effectingChildren = GetEffectingDeclarations(this, false, true);
+            List<string> outFiles = [];
             foreach (var sourceFile in Module.SourceFiles)
             {
                 if (Path.GetExtension(sourceFile) is ".h" or ".hpp" or ".inl")
@@ -64,10 +66,12 @@ class ModuleDeclarationNode : Node
 
                 List<Definition> resourceFileDefinitions = [.. effectingChildren.SelectMany(v => v.Module.ResourceDefinitions.Public), .. Module.ResourceDefinitions.Joined()];
                 List<string> resourceFileIncludePaths = [.. effectingChildren.SelectMany(v => v.Module.ResourceIncludes.Public.Select(c => Path.GetFullPath(c, v.Module.Context.ModuleDirectory.FullName))), .. Module.ResourceIncludes.Joined().Select(c => Path.GetFullPath(c, Module.Context.ModuleDirectory.FullName))];
+                var outputFile = Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sourceFile) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile));
+                outFiles.Add(outputFile);
                 var compileSettings = new CompilerSettings
                 {
                     SourceFile = Path.GetFullPath(sourceFile, Module.Context.ModuleDirectory.FullName),
-                    OutputFile = Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sourceFile) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile)),
+                    OutputFile = outputFile,
                     TargetArchitecture = Module.Context.TargetArchitecture,
                     ModuleType = Module.Type,
                     IntermediateDir = CompilerUtils.GetObjectOutputFolder(Module),
@@ -94,10 +98,11 @@ class ModuleDeclarationNode : Node
             // first we need to create the input list for the linker.
             List<string> linkInputs = [];
             // Add the object files to the link inputs.
-            linkInputs.AddRange(Module.SourceFiles.Where(sf => Path.GetExtension(sf) is not (".h" or ".hpp" or ".inl")).Select(sf =>
+            linkInputs.AddRange(outFiles.Select(sf =>
             {
                 var isResourceFile = Path.GetExtension(sf) == Module.Context.Platform.ExtensionForResourceSourceFile;
-                return Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sf) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile));
+                var file = Path.Join(CompilerUtils.GetObjectOutputFolder(Module), Path.GetFileNameWithoutExtension(sf) + (isResourceFile ? Module.Context.Platform.ExtensionForCompiledResourceFile : Module.Context.Platform.ExtensionForCompiledSourceFile));
+                return Path.GetFullPath(file, Module.Context.ModuleDirectory.FullName);
             }));
             // Add the libraries to the link inputs.
             linkInputs.AddRange(Module.Libraries.Joined());
@@ -118,8 +123,15 @@ class ModuleDeclarationNode : Node
                         linkInputs.Add(dependency.Module.GetBinaryOutputPath());
                         break;
                     case ModuleType.SharedLibrary:
-                        // For shared libraries we need to link against the import/stub library.
-                        linkInputs.Add(Path.ChangeExtension(dependency.Module.GetBinaryOutputPath(), Module.Context.Platform.ExtensionForStaticLibrary));
+                        // For shared libraries we need to link against the import/stub library if we are on Windows.
+                        if (Module.Context.Platform.Name == "windows")
+                        {
+                            linkInputs.Add(Path.ChangeExtension(dependency.Module.GetBinaryOutputPath(), Module.Context.Platform.ExtensionForStaticLibrary));
+                        }
+                        else
+                        {
+                            linkInputs.Add(dependency.Module.GetBinaryOutputPath());
+                        }
                         break;
                     case ModuleType.Executable:
                     case ModuleType.ExecutableWin32:
