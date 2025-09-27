@@ -234,6 +234,7 @@ namespace ebuild.Compilers
                 }
                 else
                 {
+                    args.Add("/D_HAS_EXCEPTIONS=0"); // Define _HAS_EXCEPTIONS=0 to disable STL exceptions
                     args.Add("/EHs-c-"); // Disable C++ exceptions
                 }
             }
