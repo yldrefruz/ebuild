@@ -2,6 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using ebuild.BuildGraph;
@@ -105,7 +106,9 @@ public class TestModule : ModuleBase
         Assert.That(result.Output, Does.Contain("Compiling"), "Expected compilation output");
         
         // Verify object files were created
-        var objectFiles = Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories);
+        var objectFiles = Directory.GetFiles(_testOutputDir, "*.o", SearchOption.AllDirectories)
+            .Concat(Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories))
+            .ToArray();
         Assert.That(objectFiles.Length, Is.GreaterThan(0), "Expected object files to be created");
     }
 
@@ -218,7 +221,9 @@ public class TestModule : ModuleBase
         FirstBuild_ShouldCompileAllFiles();
         
         // Delete object file
-        var objectFiles = Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories);
+        var objectFiles = Directory.GetFiles(_testOutputDir, "*.o", SearchOption.AllDirectories)
+            .Concat(Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories))
+            .ToArray();
         foreach (var file in objectFiles)
         {
             File.Delete(file);
