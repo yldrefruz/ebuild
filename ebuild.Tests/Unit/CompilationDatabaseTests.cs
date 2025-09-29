@@ -141,4 +141,47 @@ public class CompilationDatabaseTests
         // Act & Assert
         Assert.DoesNotThrow(() => database.SaveEntry(entry));
     }
+
+    [Test]
+    public void RemoveEntry_WhenFileExists_ShouldRemoveFile()
+    {
+        // Arrange
+        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+        var entry = new CompilationEntry
+        {
+            SourceFile = "test.cpp",
+            OutputFile = "test.obj",
+            LastCompiled = DateTime.UtcNow
+        };
+
+        // First save an entry
+        database.SaveEntry(entry);
+        Assert.That(database.GetEntry(), Is.Not.Null);
+
+        // Act
+        database.RemoveEntry();
+
+        // Assert
+        Assert.That(database.GetEntry(), Is.Null);
+    }
+
+    [Test]
+    public void RemoveEntry_WhenFileDoesNotExist_ShouldNotThrow()
+    {
+        // Arrange
+        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+
+        // Act & Assert
+        Assert.DoesNotThrow(() => database.RemoveEntry());
+    }
+
+    [Test]
+    public void RemoveEntry_WithInvalidPath_ShouldNotThrow()
+    {
+        // Arrange
+        var database = new CompilationDatabase("/invalid/path", "TestModule", "test.cpp");
+
+        // Act & Assert
+        Assert.DoesNotThrow(() => database.RemoveEntry());
+    }
 }

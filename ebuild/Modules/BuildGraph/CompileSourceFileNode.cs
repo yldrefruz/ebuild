@@ -46,12 +46,24 @@ namespace ebuild.BuildGraph
             }
             else
             {
-                await Compiler.Compile(Settings, cancellationToken);
+                var compilationSuccessful = await Compiler.Compile(Settings, cancellationToken);
                 
-                // Update compilation database after successful compile (only for BuildWorker)
+                // Update compilation database based on result (only for BuildWorker)
                 if (worker is BuildWorker)
                 {
-                    UpdateCompilationDatabase();
+                    if (compilationSuccessful)
+                    {
+                        UpdateCompilationDatabase();
+                    }
+                    else
+                    {
+                        RemoveCompilationDatabase();
+                    }
+                }
+                
+                if (!compilationSuccessful)
+                {
+                    throw new Exception($"Compilation failed for {Settings.SourceFile}");
                 }
             }
         }
@@ -92,7 +104,7 @@ namespace ebuild.BuildGraph
                 var entry = database.GetEntry();
                 if (entry == null)
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: No compilation database entry found", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: No compilation database entry found", Settings.SourceFile);
                     return false;
                 }
 
@@ -191,6 +203,29 @@ namespace ebuild.BuildGraph
             catch (Exception ex)
             {
                 Logger.LogWarning("Failed to update compilation database for {sourceFile}: {error}", 
+                    Settings.SourceFile, ex.Message);
+            }
+        }
+
+        private void RemoveCompilationDatabase()
+        {
+            try
+            {
+                if (Parent is not ModuleDeclarationNode parentModuleNode)
+                    return;
+
+                var module = parentModuleNode.Module;
+                var database = new CompilationDatabase(
+                    module.Context.ModuleDirectory.FullName,
+                    module.Name ?? "Unknown",
+                    Settings.SourceFile);
+
+                database.RemoveEntry();
+                Logger.LogDebug("Removed compilation database entry for failed compilation: {sourceFile}", Settings.SourceFile);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning("Failed to remove compilation database entry for {sourceFile}: {error}", 
                     Settings.SourceFile, ex.Message);
             }
         }
