@@ -2,7 +2,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using ebuild.BuildGraph;
+using ebuild.Modules.BuildGraph;
 using ebuild.api;
 
 namespace ebuild.Tests.Unit;
@@ -44,7 +44,7 @@ public class CompilationDatabaseFailureTests
         var sourceFile = Path.Combine(_testDir, "test.cpp");
         File.WriteAllText(sourceFile, "int main() { return 0; }");
 
-        var database = new CompilationDatabase(_testDir, "TestModule", sourceFile);
+        var database = CompilationDatabase.Get(_testDir, "TestModule", sourceFile);
         
         // Create an entry as if a previous compilation was successful
         var entry = new CompilationEntry
@@ -85,7 +85,7 @@ public class CompilationDatabaseFailureTests
         var sourceFile = Path.Combine(_testDir, "test.cpp");
         File.WriteAllText(sourceFile, "int main() { return 0; }");
 
-        var database = new CompilationDatabase(_testDir, "TestModule", sourceFile);
+        var database = CompilationDatabase.Get(_testDir, "TestModule", sourceFile);
         
         // Simulate: Initial successful compilation creates database entry
         var successEntry = new CompilationEntry

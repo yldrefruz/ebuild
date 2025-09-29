@@ -35,6 +35,12 @@ class ModuleDeclarationNode : Node
         {
             AddDependencies(AccessLimit.Public);
             AddDependencies(AccessLimit.Private);
+            // prebuild steps
+            foreach (var step in Module.PreBuildSteps)
+            {
+                var stepNode = new BuildStepNode($"PreBuildStep_{Module.PreBuildSteps.IndexOf(step)}", step, BuildStepNode.StepType.PreBuild);
+                AddChild(stepNode, AccessLimit.Private);
+            }
             // Source file compile nodes.
             var effectingChildren = GetEffectingDeclarations(this, false, true);
             List<string> outFiles = [];
@@ -167,7 +173,12 @@ class ModuleDeclarationNode : Node
         {
             _currentlyConstructing.Remove(moduleId);
         }
-
+        // postbuild steps
+        foreach (var step in Module.PostBuildSteps)
+        {
+            var stepNode = new BuildStepNode($"PostBuildStep_{Module.PostBuildSteps.IndexOf(step)}", step, BuildStepNode.StepType.PostBuild);
+            AddChild(stepNode, AccessLimit.Private);
+        }
     }
 
     private static List<ModuleDeclarationNode> GetEffectingDeclarations(ModuleDeclarationNode node, bool includeSelf = false, bool includePrivateChildren = true)

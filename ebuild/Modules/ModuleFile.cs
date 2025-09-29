@@ -233,47 +233,6 @@ namespace ebuild
             return l;
         }
 
-        public bool HasChanged()
-        {
-            return GetLastEditTime() == null || GetCachedEditTime() == null || GetLastEditTime() != GetCachedEditTime();
-        }
-
-        private DateTime? GetLastEditTime()
-        {
-            try
-            {
-                var fi = new FileInfo(_reference.GetFilePath());
-                return fi.LastWriteTimeUtc;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
-
-        public void UpdateCachedEditTime()
-        {
-            var lastEditTime = GetLastEditTime();
-            if (lastEditTime == null) return;
-            var fi = GetCachedEditTimeFile();
-            fi.Directory?.Create();
-            using var fs = fi.Create();
-            fs.Write(Encoding.UTF8.GetBytes(lastEditTime.ToString()!));
-        }
-
-        private FileInfo GetCachedEditTimeFile() => new(Path.Join(GetDirectory(), ".ebuild", Name, "last_edit.cache"));
-
-        private DateTime? GetCachedEditTime()
-        {
-            var fi = GetCachedEditTimeFile();
-            if (fi.Exists)
-            {
-                return fi.LastWriteTimeUtc;
-            }
-
-            return null;
-        }
-
         private bool TryGetModuleMetaFileName(out string fileName)
         {
             if (File.Exists(Path.Join(GetDirectory(), $"{Name}.ebuild.meta")))
@@ -336,10 +295,19 @@ namespace ebuild
 
         private async Task CreateOrUpdateSolution()
         {
+            // Solutions only contain a single project file. That is the module file project.
+
             var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
             var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
             var moduleProjectFileLocation =
                 Path.Join(moduleProjectFileDir, Name + ".ebuild_module.csproj");
+            // If the solution file already is up to date just return
+            if (File.Exists(Path.Join(localEBuildDirectory.FullName, Name + ".ebuild_module.sln")) &&
+                File.Exists(moduleProjectFileLocation))
+            {
+                return;
+            }
+
             var psi = new ProcessStartInfo
             {
                 WorkingDirectory = moduleProjectFileDir,
@@ -374,6 +342,30 @@ namespace ebuild
             return Assembly.Load(buffer);
         }
 
+        public bool HasChanged()
+        {
+            var lastWriteTime = File.GetLastWriteTimeUtc(_reference.GetFilePath());
+            var dllWriteTime = DateTime.MinValue;
+            try
+            {
+                var localEBuildDirectory = Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
+                var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, Name, Name + ".ebuild_module.dll");
+                if (File.Exists(toLoadDllFile))
+                {
+                    dllWriteTime = File.GetLastWriteTimeUtc(toLoadDllFile);
+                }
+            }
+            catch
+            {
+                // Ignore errors
+            }
+            return lastWriteTime > dllWriteTime;
+        }
+
+
+        private string ToLoadDll => Path.Join(GetDirectory(), ".ebuild", Name, Name + ".ebuild_module.dll");
+        private string EBuildCacheDir => Path.Join(GetDirectory(), ".ebuild");
+
         /// <summary>
         /// Compile the module file and load the assembly.
         /// There are massive security concerns about this as the loaded assembly can do whatever it wants.
@@ -385,23 +377,23 @@ namespace ebuild
         /// <exception cref="ModuleFileCompileException">The module file couldn't be compiled.</exception>
         private async Task<Assembly> CompileAndLoad()
         {
-            var localEBuildDirectory = System.IO.Directory.CreateDirectory(Path.Join(GetDirectory(), ".ebuild"));
-            var toLoadDllFile = Path.Join(localEBuildDirectory.FullName, Name, Name + ".ebuild_module.dll");
             if (!HasChanged())
             {
-                return LoadAssembly(toLoadDllFile);
+                return LoadAssembly(ToLoadDll);
             }
+
             var logger = LoggerFactory
                 .Create(builder => builder.AddConsole().AddSimpleConsole(options => options.SingleLine = true))
                 .CreateLogger("Module File Compiler");
             logger.LogDebug("Compiling file, {path}", _reference.GetFilePath());
             var ebuildApiDll = EBuild.FindEBuildApiDllPath();
             logger.LogDebug("Found ebuild api dll: {path}", ebuildApiDll);
-            var moduleProjectFileDir = Path.Join(localEBuildDirectory.FullName, Name, "intermediate");
+            var moduleProjectFileDir = Path.Join(EBuildCacheDir, Name, "intermediate");
             var moduleProjectFileLocation =
                 Path.Join(moduleProjectFileDir, Name + ".ebuild_module.csproj");
             logger.LogDebug("ebuild module {name} project is created at: {path}", Name, moduleProjectFileLocation);
-            System.IO.Directory.CreateDirectory(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName);
+            Directory.CreateDirectory(Directory.GetParent(moduleProjectFileLocation)!.FullName);
+
             await using (var moduleProjectFile = File.Create(moduleProjectFileLocation))
             {
                 await using var writer = new StreamWriter(moduleProjectFile);
@@ -452,14 +444,10 @@ namespace ebuild
 
             logger.LogDebug("Starting dotnet to build the module: {program} {args}", psi.FileName, psi.Arguments);
             var p = new Process();
-            p.ErrorDataReceived += (_, args) =>
+            void logMessage(string? data)
             {
-                if (args.Data != null) logger.LogError("{data}", args.Data);
-            };
-            p.OutputDataReceived += (_, args) =>
-            {
-                if (args.Data == null) return;
-                var message = args.Data;
+                if (data == null) return;
+                var message = data;
                 var match = DotnetErrorAndWarningRegex.Match(message);
                 var pathMatch = match.Groups["path"];
                 var typeMatch = match.Groups["type"];
@@ -479,11 +467,9 @@ namespace ebuild
                             break;
                     }
                 }
-                else
-                {
-                    //logger.LogInformation("{data}", args.Data);
-                }
-            };
+            }
+            p.ErrorDataReceived += (_, args) => logMessage(args.Data);
+            p.OutputDataReceived += (_, args) => logMessage(args.Data);
             p.StartInfo = psi;
             p.EnableRaisingEvents = true;
 
@@ -499,13 +485,14 @@ namespace ebuild
 
             var dllFile = Path.Join(System.IO.Directory.GetParent(moduleProjectFileLocation)!.FullName, "bin/net8.0",
                 Name + ".ebuild_module.dll");
-            logger.LogDebug("module {name} dll is at {path}, will be copied to {new_path}", Name, dllFile, toLoadDllFile);
-            File.Copy(dllFile, toLoadDllFile, true);
-            UpdateCachedEditTime();
+            logger.LogDebug("module {name} dll is at {path}, will be copied to {new_path}", Name, dllFile, ToLoadDll);
+            File.Copy(dllFile, ToLoadDll, true); ;
             logger.LogDebug("module {name} cache time is updated", Name);
-            logger.LogDebug("loading the assembly {dll}", toLoadDllFile);
-            return LoadAssembly(toLoadDllFile);
+            logger.LogDebug("loading the assembly {dll}", ToLoadDll);
+            return LoadAssembly(ToLoadDll);
         }
+
+
         // TODO: This requires a better way to compare variants. And treat the variants as different files.
         public override bool Equals(object? obj)
         {

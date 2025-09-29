@@ -29,12 +29,9 @@ namespace ebuild.api
                 var hash = SHA256.HashData(content);
                 if (ExpectedHash == null || (ExpectedHash != null && hash.SequenceEqual(Convert.FromHexString(ExpectedHash))))
                 {
-                    //already have the file and it matches the hash
-                    Console.WriteLine("File found with matching hash");
                     return true;
                 }
             }
-            Console.WriteLine($"Downloading \"{Url}\" to \"{archiveDir}\"");
             var response = client.GetAsync(Url).Result;
             if (response.IsSuccessStatusCode)
             {

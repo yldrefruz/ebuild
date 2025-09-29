@@ -2,135 +2,134 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using ebuild.api;
 
-namespace ebuild.BuildGraph
+namespace ebuild.Modules.BuildGraph;
+
+/// <summary>
+/// Scans source files for include dependencies
+/// </summary>
+public static class DependencyScanner
 {
+    private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("DependencyScanner");
+    private static readonly Regex IncludeRegex = new(@"^\s*#\s*include\s*[""<]([^""<>]+)[""<>]", RegexOptions.Compiled);
+
     /// <summary>
-    /// Scans source files for include dependencies
+    /// Recursively scans a source file for all include dependencies
     /// </summary>
-    public static class DependencyScanner
+    /// <param name="sourceFile">The source file to scan</param>
+    /// <param name="includePaths">List of include directories to search</param>
+    /// <param name="module">The module context for determining platform-specific system includes</param>
+    /// <param name="visited">Set of already visited files to prevent infinite recursion</param>
+    /// <returns>List of all dependency file paths</returns>
+    public static List<string> ScanDependencies(string sourceFile, List<string> includePaths, ModuleBase module, HashSet<string>? visited = null)
     {
-        private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("DependencyScanner");
-        private static readonly Regex IncludeRegex = new(@"^\s*#\s*include\s*[""<]([^""<>]+)[""<>]", RegexOptions.Compiled);
+        visited ??= new HashSet<string>();
+        var dependencies = new List<string>();
 
-        /// <summary>
-        /// Recursively scans a source file for all include dependencies
-        /// </summary>
-        /// <param name="sourceFile">The source file to scan</param>
-        /// <param name="includePaths">List of include directories to search</param>
-        /// <param name="module">The module context for determining platform-specific system includes</param>
-        /// <param name="visited">Set of already visited files to prevent infinite recursion</param>
-        /// <returns>List of all dependency file paths</returns>
-        public static List<string> ScanDependencies(string sourceFile, List<string> includePaths, ModuleBase module, HashSet<string>? visited = null)
+        var normalizedPath = Path.GetFullPath(sourceFile);
+        if (!visited.Add(normalizedPath))
+            return dependencies; // Already visited
+
+        if (!File.Exists(sourceFile))
+            return dependencies;
+
+        try
         {
-            visited ??= new HashSet<string>();
-            var dependencies = new List<string>();
+            var lines = File.ReadAllLines(sourceFile);
+            var sourceDir = Path.GetDirectoryName(sourceFile) ?? "";
 
-            var normalizedPath = Path.GetFullPath(sourceFile);
-            if (!visited.Add(normalizedPath))
-                return dependencies; // Already visited
+            foreach (var line in lines)
+            {
+                var match = IncludeRegex.Match(line);
+                if (!match.Success)
+                    continue;
 
-            if (!File.Exists(sourceFile))
-                return dependencies;
+                var includePath = match.Groups[1].Value;
+                var foundPath = FindIncludeFile(includePath, sourceDir, includePaths);
 
+                if (!string.IsNullOrEmpty(foundPath) && !IsSystemInclude(foundPath, module))
+                {
+                    dependencies.Add(foundPath);
+
+                    // Recursively scan the included file
+                    var nestedDeps = ScanDependencies(foundPath, includePaths, module, visited);
+                    dependencies.AddRange(nestedDeps);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning("Failed to scan dependencies for {sourceFile}: {error}", sourceFile, ex.Message);
+        }
+
+        return dependencies;
+    }
+
+    private static string? FindIncludeFile(string includePath, string sourceDir, List<string> includePaths)
+    {
+        // Try relative to source file first
+        var relativePath = Path.Combine(sourceDir, includePath);
+        if (File.Exists(relativePath))
+            return Path.GetFullPath(relativePath);
+
+        // Try each include directory
+        foreach (var includeDir in includePaths)
+        {
+            var fullPath = Path.Combine(includeDir, includePath);
+            if (File.Exists(fullPath))
+                return Path.GetFullPath(fullPath);
+        }
+
+        return null;
+    }
+
+    private static bool IsSystemInclude(string filePath, ModuleBase module)
+    {
+        var normalizedPath = Path.GetFullPath(filePath);
+
+        // Get platform-specific include directories
+        var platformIncludes = module.Context.Platform.GetPlatformIncludes(module);
+
+        foreach (var systemDir in platformIncludes)
+        {
             try
             {
-                var lines = File.ReadAllLines(sourceFile);
-                var sourceDir = Path.GetDirectoryName(sourceFile) ?? "";
-
-                foreach (var line in lines)
-                {
-                    var match = IncludeRegex.Match(line);
-                    if (!match.Success)
-                        continue;
-
-                    var includePath = match.Groups[1].Value;
-                    var foundPath = FindIncludeFile(includePath, sourceDir, includePaths);
-
-                    if (!string.IsNullOrEmpty(foundPath) && !IsSystemInclude(foundPath, module))
-                    {
-                        dependencies.Add(foundPath);
-                        
-                        // Recursively scan the included file
-                        var nestedDeps = ScanDependencies(foundPath, includePaths, module, visited);
-                        dependencies.AddRange(nestedDeps);
-                    }
-                }
+                var normalizedSystemDir = Path.GetFullPath(systemDir);
+                if (normalizedPath.StartsWith(normalizedSystemDir, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
-            catch (Exception ex)
+            catch
             {
-                Logger.LogWarning("Failed to scan dependencies for {sourceFile}: {error}", sourceFile, ex.Message);
+                // Ignore paths that can't be normalized
             }
-
-            return dependencies;
         }
 
-        private static string? FindIncludeFile(string includePath, string sourceDir, List<string> includePaths)
+        return false;
+    }
+
+    /// <summary>
+    /// Gets the latest modification time from a list of files
+    /// </summary>
+    public static DateTime GetLatestModificationTime(IEnumerable<string> files)
+    {
+        var latest = DateTime.MinValue;
+
+        foreach (var file in files)
         {
-            // Try relative to source file first
-            var relativePath = Path.Combine(sourceDir, includePath);
-            if (File.Exists(relativePath))
-                return Path.GetFullPath(relativePath);
-
-            // Try each include directory
-            foreach (var includeDir in includePaths)
+            try
             {
-                var fullPath = Path.Combine(includeDir, includePath);
-                if (File.Exists(fullPath))
-                    return Path.GetFullPath(fullPath);
-            }
-
-            return null;
-        }
-
-        private static bool IsSystemInclude(string filePath, ModuleBase module)
-        {
-            var normalizedPath = Path.GetFullPath(filePath);
-            
-            // Get platform-specific include directories
-            var platformIncludes = module.Context.Platform.GetPlatformIncludes(module);
-            
-            foreach (var systemDir in platformIncludes)
-            {
-                try
+                if (File.Exists(file))
                 {
-                    var normalizedSystemDir = Path.GetFullPath(systemDir);
-                    if (normalizedPath.StartsWith(normalizedSystemDir, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-                catch
-                {
-                    // Ignore paths that can't be normalized
+                    var modTime = File.GetLastWriteTimeUtc(file);
+                    if (modTime > latest)
+                        latest = modTime;
                 }
             }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Gets the latest modification time from a list of files
-        /// </summary>
-        public static DateTime GetLatestModificationTime(IEnumerable<string> files)
-        {
-            var latest = DateTime.MinValue;
-            
-            foreach (var file in files)
+            catch
             {
-                try
-                {
-                    if (File.Exists(file))
-                    {
-                        var modTime = File.GetLastWriteTimeUtc(file);
-                        if (modTime > latest)
-                            latest = modTime;
-                    }
-                }
-                catch
-                {
-                    // Ignore files that can't be accessed
-                }
+                // Ignore files that can't be accessed
             }
-
-            return latest;
         }
+
+        return latest;
     }
 }

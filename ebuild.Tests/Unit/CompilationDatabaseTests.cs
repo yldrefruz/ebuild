@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
-using ebuild.BuildGraph;
+using ebuild.Modules.BuildGraph;
 using ebuild.api;
 using ebuild.api.Compiler;
 
@@ -39,7 +39,7 @@ public class CompilationDatabaseTests
     public void GetEntry_WhenFileDoesNotExist_ShouldReturnNull()
     {
         // Arrange
-        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
 
         // Act
         var entry = database.GetEntry();
@@ -52,7 +52,7 @@ public class CompilationDatabaseTests
     public void SaveAndGetEntry_ShouldPersistData()
     {
         // Arrange
-        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
         var originalEntry = new CompilationEntry
         {
             SourceFile = "test.cpp",
@@ -112,8 +112,8 @@ public class CompilationDatabaseTests
     public void GetEntry_WithCorruptedFile_ShouldReturnNull()
     {
         // Arrange
-        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
-        
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
+
         // Create corrupted file
         var dbDir = Path.Combine(_testDir, ".ebuild", "TestModule");
         Directory.CreateDirectory(dbDir);
@@ -131,7 +131,7 @@ public class CompilationDatabaseTests
     public void SaveEntry_WithIOError_ShouldNotThrow()
     {
         // Arrange
-        var database = new CompilationDatabase("/invalid/path", "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get("/invalid/path", "TestModule", "test.cpp");
         var entry = new CompilationEntry
         {
             SourceFile = "test.cpp",
@@ -146,7 +146,7 @@ public class CompilationDatabaseTests
     public void RemoveEntry_WhenFileExists_ShouldRemoveFile()
     {
         // Arrange
-        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
         var entry = new CompilationEntry
         {
             SourceFile = "test.cpp",
@@ -169,7 +169,7 @@ public class CompilationDatabaseTests
     public void RemoveEntry_WhenFileDoesNotExist_ShouldNotThrow()
     {
         // Arrange
-        var database = new CompilationDatabase(_testDir, "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
 
         // Act & Assert
         Assert.DoesNotThrow(() => database.RemoveEntry());
@@ -179,7 +179,7 @@ public class CompilationDatabaseTests
     public void RemoveEntry_WithInvalidPath_ShouldNotThrow()
     {
         // Arrange
-        var database = new CompilationDatabase("/invalid/path", "TestModule", "test.cpp");
+        var database = CompilationDatabase.Get("/invalid/path", "TestModule", "test.cpp");
 
         // Act & Assert
         Assert.DoesNotThrow(() => database.RemoveEntry());

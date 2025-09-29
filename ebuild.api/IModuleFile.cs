@@ -9,8 +9,6 @@ namespace ebuild.api
         public string GetFilePath();
         public string GetDirectory();
         public bool HasChanged();
-        public void UpdateCachedEditTime();
-
         public static string TryDirToModuleFile(string path, out string name)
         {
             if (File.Exists(path))
