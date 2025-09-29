@@ -12,7 +12,7 @@ namespace ebuild.Tests.Unit;
 [TestFixture]
 public class DependencyScannerTests
 {
-    private string _testDir;
+    private string _testDir = string.Empty;
 
     [SetUp]
     public void SetUp()
