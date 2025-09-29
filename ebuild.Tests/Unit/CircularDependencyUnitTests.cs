@@ -16,11 +16,11 @@ namespace ebuild.Tests.Unit;
 [Order(99)]
 public class CircularDependencyUnitTests
 {
-    private string _circularDependencyExamplePath;
-    private string _testModuleAPath;
-    private string _testModuleBPath;
-    private string _testOutputDir;
-    private string _ebuildExePath;
+    private string _circularDependencyExamplePath = string.Empty;
+    private string _testModuleAPath = string.Empty;
+    private string _testModuleBPath = string.Empty;
+    private string _testOutputDir = string.Empty;
+    private string _ebuildExePath = string.Empty;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -29,7 +29,7 @@ public class CircularDependencyUnitTests
         _testModuleAPath = Path.Combine(_circularDependencyExamplePath, "test_circular_a.ebuild.cs");
         _testModuleBPath = Path.Combine(_circularDependencyExamplePath, "test_circular_b.ebuild.cs");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "circular_dependency");
-        var thisAssemblyLocation = Assembly.GetAssembly(GetType()).Location;
+        var thisAssemblyLocation = Assembly.GetAssembly(GetType())!.Location;
         _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
 
         Directory.CreateDirectory(_testOutputDir);
@@ -57,13 +57,13 @@ public class CircularDependencyUnitTests
             SelfModuleReference = new ModuleReference(_testModuleAPath),
             Configuration = "Debug",
             Architecture = RuntimeInformation.ProcessArchitecture,
-            Toolchain = IToolchainRegistry.Get().GetToolchain(PlatformRegistry.GetHostPlatform().GetDefaultToolchainName()),
+            Toolchain = IToolchainRegistry.Get().GetToolchain(PlatformRegistry.GetHostPlatform().GetDefaultToolchainName()!)!, // should always succeed in test environments.
             Platform = PlatformRegistry.GetHostPlatform(),
             AdditionalLinkerOptions = []
         };
 
         // Act
-        Graph buildGraph = null;
+        Graph? buildGraph = null;
         Assert.DoesNotThrowAsync(async () =>
         {
             buildGraph = await moduleFile.BuildOrGetBuildGraph(instancingParams);
@@ -71,7 +71,7 @@ public class CircularDependencyUnitTests
 
         // Assert
         Assert.That(buildGraph, Is.Not.Null, "Build graph should be created even with circular dependencies");
-        Assert.That(buildGraph.HasCircularDependency(), Is.True, "Build graph should detect circular dependency");
+        Assert.That(buildGraph!.HasCircularDependency(), Is.True, "Build graph should detect circular dependency");
 
         var circularPath = buildGraph.GetCircularDependencyPath();
         Assert.That(circularPath, Is.Not.Empty, "Circular dependency path should not be empty");
@@ -90,7 +90,7 @@ public class CircularDependencyUnitTests
             SelfModuleReference = new ModuleReference(_testModuleAPath),
             Configuration = "Debug",
             Architecture = RuntimeInformation.ProcessArchitecture,
-            Toolchain = IToolchainRegistry.Get().GetToolchain(PlatformRegistry.GetHostPlatform().GetDefaultToolchainName()),
+            Toolchain = IToolchainRegistry.Get().GetToolchain(PlatformRegistry.GetHostPlatform().GetDefaultToolchainName()!)!, // should always succeed in test environments.
             Platform = PlatformRegistry.GetHostPlatform(),
             AdditionalLinkerOptions = []
         };
@@ -100,13 +100,13 @@ public class CircularDependencyUnitTests
 
         // Act - Call multiple times to test caching
         var stopwatch = Stopwatch.StartNew();
-        var hasCircular1 = buildGraph.HasCircularDependency();
+        var hasCircular1 = buildGraph!.HasCircularDependency();
         var time1 = stopwatch.ElapsedMilliseconds;
 
-        var hasCircular2 = buildGraph.HasCircularDependency();
+        var hasCircular2 = buildGraph!.HasCircularDependency();
         var time2 = stopwatch.ElapsedMilliseconds - time1;
 
-        var path1 = buildGraph.GetCircularDependencyPath();
+        var path1 = buildGraph!.GetCircularDependencyPath();
         var time3 = stopwatch.ElapsedMilliseconds - time1 - time2;
 
         var path2 = buildGraph.GetCircularDependencyPath();

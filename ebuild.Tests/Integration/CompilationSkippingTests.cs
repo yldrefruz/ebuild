@@ -15,11 +15,11 @@ namespace ebuild.Tests.Integration;
 [Order(3)]
 public class CompilationSkippingTests
 {
-    private string _testModulePath;
-    private string _testOutputDir;
-    private string _ebuildExePath;
-    private string _testSourceFile;
-    private string _testHeaderFile;
+    private string _testModulePath = string.Empty;
+    private string _testOutputDir = string.Empty;
+    private string _ebuildExePath = string.Empty;
+    private string _testSourceFile = string.Empty;
+    private string _testHeaderFile = string.Empty;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()

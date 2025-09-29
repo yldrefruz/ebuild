@@ -10,11 +10,11 @@ namespace ebuild.Tests.Integration;
 [TestFixture, Order(1)]
 public class CircularDependencyTests
 {
-    private string _circularDependencyExamplePath;
-    private string _testModuleAPath;
-    private string _testModuleBPath;
-    private string _testOutputDir;
-    private string _ebuildExePath;
+    private string _circularDependencyExamplePath = string.Empty;
+    private string _testModuleAPath = string.Empty;
+    private string _testModuleBPath = string.Empty;
+    private string _testOutputDir = string.Empty;
+    private string _ebuildExePath = string.Empty;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -23,7 +23,7 @@ public class CircularDependencyTests
         _testModuleAPath = Path.Combine(_circularDependencyExamplePath, "test_circular_a.ebuild.cs");
         _testModuleBPath = Path.Combine(_circularDependencyExamplePath, "test_circular_b.ebuild.cs");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "circular_dependency");
-        var thisAssemblyLocation = Assembly.GetAssembly(GetType()).Location;
+        var thisAssemblyLocation = Assembly.GetAssembly(GetType())!.Location; // should always be non-null. If not should throw. So the ! makes sense.
         _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
 
         Directory.CreateDirectory(_testOutputDir);

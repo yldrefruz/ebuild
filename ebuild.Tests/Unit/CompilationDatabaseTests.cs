@@ -12,7 +12,7 @@ namespace ebuild.Tests.Unit;
 [TestFixture]
 public class CompilationDatabaseTests
 {
-    private string _testDir;
+    private string _testDir = string.Empty;
 
     [SetUp]
     public void SetUp()
@@ -70,12 +70,12 @@ public class CompilationDatabaseTests
 
         // Assert
         Assert.That(retrievedEntry, Is.Not.Null);
-        Assert.That(retrievedEntry.SourceFile, Is.EqualTo(originalEntry.SourceFile));
-        Assert.That(retrievedEntry.OutputFile, Is.EqualTo(originalEntry.OutputFile));
-        Assert.That(retrievedEntry.Definitions, Is.EqualTo(originalEntry.Definitions));
-        Assert.That(retrievedEntry.IncludePaths, Is.EqualTo(originalEntry.IncludePaths));
-        Assert.That(retrievedEntry.ForceIncludes, Is.EqualTo(originalEntry.ForceIncludes));
-        Assert.That(retrievedEntry.Dependencies, Is.EqualTo(originalEntry.Dependencies));
+        Assert.That(retrievedEntry!.SourceFile, Is.EqualTo(originalEntry.SourceFile));
+        Assert.That(retrievedEntry!.OutputFile, Is.EqualTo(originalEntry.OutputFile));
+        Assert.That(retrievedEntry!.Definitions, Is.EqualTo(originalEntry.Definitions));
+        Assert.That(retrievedEntry!.IncludePaths, Is.EqualTo(originalEntry.IncludePaths));
+        Assert.That(retrievedEntry!.ForceIncludes, Is.EqualTo(originalEntry.ForceIncludes));
+        Assert.That(retrievedEntry!.Dependencies, Is.EqualTo(originalEntry.Dependencies));
     }
 
     [Test]

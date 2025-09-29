@@ -13,16 +13,16 @@ namespace ebuild.Tests.Integration;
 [Order(2)]
 public class ZlibEbuildTests
 {
-    private string _zlibModulePath;
-    private string _testOutputDir;
-    private string _ebuildExePath;
+    private string _zlibModulePath = string.Empty;
+    private string _testOutputDir = string.Empty;
+    private string _ebuildExePath = string.Empty;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
         _zlibModulePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "examples", "zlib", "zlib.ebuild.cs");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "zlib");
-        var thisAssemblyLocation = Assembly.GetAssembly(GetType()).Location;
+        var thisAssemblyLocation = Assembly.GetAssembly(GetType())!.Location;
         _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
         Directory.CreateDirectory(_testOutputDir);
     }
@@ -47,7 +47,7 @@ public class ZlibEbuildTests
             RedirectStandardError = true
         };
 
-        using var process = Process.Start(startInfo);
+        using var process = Process.Start(startInfo)!;
         Assert.That(process, Is.Not.Null, "Process should start successfully");
 
         var output = await process.StandardOutput.ReadToEndAsync();
@@ -152,7 +152,7 @@ public class ZlibEbuildTests
 
         using var process = Process.Start(startInfo);
         Assert.That(process, Is.Not.Null, "Process should start successfully");
-        process.BeginOutputReadLine();
+        process!.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.OutputDataReceived += (sender, args) => Console.WriteLine(args.Data);
         process.ErrorDataReceived += (sender, args) => Console.Error.WriteLine(args.Data);
@@ -208,7 +208,7 @@ public class ZlibEbuildTests
         using var process = Process.Start(startInfo);
         Assert.That(process, Is.Not.Null, "Process should start successfully");
 
-        var output = await process.StandardOutput.ReadToEndAsync();
+        var output = await process!.StandardOutput.ReadToEndAsync();
         var error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
 
