@@ -3,7 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using ebuild.BuildGraph;
+using ebuild.api;
 
 namespace ebuild.Tests.Unit;
 
@@ -33,6 +35,62 @@ public class DependencyScannerTests
         }
     }
 
+    private ModuleBase CreateMockModule()
+    {
+        // Create a simple mock module that doesn't require platform initialization
+        // For unit tests, we just need a module with a platform that returns empty includes
+        return new MockModule();
+    }
+
+    private class MockModule : ModuleBase
+    {
+        public MockModule() : base(new MockModuleContext())
+        {
+            Name = "TestModule";
+        }
+    }
+
+    private class MockModuleContext : ModuleContext
+    {
+        public MockModuleContext() : base(new MockModuleReference(), new MockPlatform(), new MockToolchain())
+        {
+        }
+    }
+
+    private class MockModuleReference : ModuleReference
+    {
+        public MockModuleReference() : base("test")
+        {
+        }
+    }
+
+    private class MockPlatform : PlatformBase
+    {
+        public MockPlatform() : base("test")
+        {
+        }
+
+        public override string? GetDefaultToolchainName() => "test";
+        public override string ExtensionForStaticLibrary => ".lib";
+        public override string ExtensionForSharedLibrary => ".dll";
+        public override string ExtensionForExecutable => ".exe";
+
+        // Return empty includes for unit tests
+        public override IEnumerable<string> GetPlatformIncludes(ModuleBase module)
+        {
+            yield break;
+        }
+    }
+
+    private class MockToolchain : api.Toolchain.IToolchain
+    {
+        public string Name => "test";
+        public Task<api.Compiler.ICompilerFactory?> CreateCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams) => Task.FromResult<api.Compiler.ICompilerFactory?>(null);
+        public Task<api.Linker.ILinkerFactory?> CreateLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams) => Task.FromResult<api.Linker.ILinkerFactory?>(null);
+        public api.Compiler.ICompilerFactory? GetCompilerFactory(ModuleBase module, IModuleInstancingParams instancingParams) => null;
+        public api.Linker.ILinkerFactory? GetLinkerFactory(ModuleBase module, IModuleInstancingParams instancingParams) => null;
+    }
+
     [Test]
     public void ScanDependencies_WithLocalIncludes_ShouldFindDependencies()
     {
@@ -56,7 +114,7 @@ void function() {
 ");
 
         // Act
-        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir });
+        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir }, CreateMockModule());
 
         // Assert
         Assert.That(dependencies, Is.Not.Empty);
@@ -96,7 +154,7 @@ void function() {
 ");
 
         // Act
-        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir });
+        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir }, CreateMockModule());
 
         // Assert
         Assert.That(dependencies, Does.Contain(Path.GetFullPath(header1File)));
@@ -138,7 +196,7 @@ void function() {
         // Act & Assert - Should not hang or throw
         Assert.DoesNotThrow(() =>
         {
-            var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir });
+            var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir }, CreateMockModule());
             Assert.That(dependencies, Is.Not.Empty);
         });
     }
@@ -160,7 +218,7 @@ int main() {
 ");
 
         // Act
-        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir });
+        var dependencies = DependencyScanner.ScanDependencies(sourceFile, new List<string> { _testDir }, CreateMockModule());
 
         // Assert
         Assert.That(dependencies, Is.Empty, "System includes should be ignored");

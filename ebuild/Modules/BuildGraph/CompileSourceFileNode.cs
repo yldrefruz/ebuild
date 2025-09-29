@@ -129,7 +129,7 @@ namespace ebuild.BuildGraph
                 if (!string.IsNullOrEmpty(sourceDir))
                     allIncludePaths.Insert(0, sourceDir);
 
-                var currentDeps = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths);
+                var currentDeps = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths, module);
                 currentDeps.AddRange(Settings.ForceIncludes);
                 currentDeps = currentDeps.Distinct().OrderBy(s => s).ToList();
 
@@ -179,7 +179,7 @@ namespace ebuild.BuildGraph
                 if (!string.IsNullOrEmpty(sourceDir))
                     allIncludePaths.Insert(0, sourceDir);
 
-                var dependencies = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths);
+                var dependencies = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths, module);
                 dependencies.AddRange(Settings.ForceIncludes);
                 dependencies = dependencies.Distinct().ToList();
 

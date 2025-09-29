@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using ebuild.api;
 
 namespace ebuild.BuildGraph
 {
@@ -10,24 +11,16 @@ namespace ebuild.BuildGraph
     {
         private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("DependencyScanner");
         private static readonly Regex IncludeRegex = new(@"^\s*#\s*include\s*[""<]([^""<>]+)[""<>]", RegexOptions.Compiled);
-        private static readonly HashSet<string> SystemIncludeDirs = new()
-        {
-            "/usr/include",
-            "/usr/local/include",
-            "/opt/homebrew/include",
-            @"C:\Program Files\Microsoft Visual Studio",
-            @"C:\Program Files (x86)\Windows Kits",
-            @"C:\Program Files (x86)\Microsoft Visual Studio"
-        };
 
         /// <summary>
         /// Recursively scans a source file for all include dependencies
         /// </summary>
         /// <param name="sourceFile">The source file to scan</param>
         /// <param name="includePaths">List of include directories to search</param>
+        /// <param name="module">The module context for determining platform-specific system includes</param>
         /// <param name="visited">Set of already visited files to prevent infinite recursion</param>
         /// <returns>List of all dependency file paths</returns>
-        public static List<string> ScanDependencies(string sourceFile, List<string> includePaths, HashSet<string>? visited = null)
+        public static List<string> ScanDependencies(string sourceFile, List<string> includePaths, ModuleBase module, HashSet<string>? visited = null)
         {
             visited ??= new HashSet<string>();
             var dependencies = new List<string>();
@@ -53,12 +46,12 @@ namespace ebuild.BuildGraph
                     var includePath = match.Groups[1].Value;
                     var foundPath = FindIncludeFile(includePath, sourceDir, includePaths);
 
-                    if (!string.IsNullOrEmpty(foundPath) && !IsSystemInclude(foundPath))
+                    if (!string.IsNullOrEmpty(foundPath) && !IsSystemInclude(foundPath, module))
                     {
                         dependencies.Add(foundPath);
                         
                         // Recursively scan the included file
-                        var nestedDeps = ScanDependencies(foundPath, includePaths, visited);
+                        var nestedDeps = ScanDependencies(foundPath, includePaths, module, visited);
                         dependencies.AddRange(nestedDeps);
                     }
                 }
@@ -89,11 +82,14 @@ namespace ebuild.BuildGraph
             return null;
         }
 
-        private static bool IsSystemInclude(string filePath)
+        private static bool IsSystemInclude(string filePath, ModuleBase module)
         {
             var normalizedPath = Path.GetFullPath(filePath);
             
-            foreach (var systemDir in SystemIncludeDirs)
+            // Get platform-specific include directories
+            var platformIncludes = module.Context.Platform.GetPlatformIncludes(module);
+            
+            foreach (var systemDir in platformIncludes)
             {
                 try
                 {
