@@ -66,6 +66,9 @@ namespace ebuild.api
         public bool EnableRTTI = true;
         public bool? EnableDebugFileCreation = null;
 
+        public List<IModuleBuildStep> PreBuildSteps = [];
+        public List<IModuleBuildStep> PostBuildSteps = [];
+
         /// <summary>
         /// Should we use variants for this module?
         /// </summary>
