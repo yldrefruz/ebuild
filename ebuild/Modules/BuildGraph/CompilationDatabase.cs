@@ -65,6 +65,22 @@ namespace ebuild.BuildGraph
             }
         }
 
+        public void RemoveEntry()
+        {
+            try
+            {
+                if (File.Exists(_databasePath))
+                {
+                    File.Delete(_databasePath);
+                }
+                _cached = null;
+            }
+            catch
+            {
+                // Ignore delete errors
+            }
+        }
+
         public static CompilationEntry CreateFromSettings(CompilerSettings settings, string outputFile)
         {
             return new CompilationEntry
