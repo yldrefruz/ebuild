@@ -6,6 +6,7 @@ namespace ebuild.api.Compiler
         IA32,
         SSE,
         SSE2,
+        SSE4_2,
         AVX,
         AVX2,
         AVX512,

@@ -163,6 +163,7 @@ namespace ebuild.Compilers
                     CPUExtensions.IA32 => "IA32",
                     CPUExtensions.SSE => "SSE",
                     CPUExtensions.SSE2 => "SSE2",
+                    CPUExtensions.SSE4_2 => "SSE4.2",
                     CPUExtensions.AVX => "AVX",
                     CPUExtensions.AVX2 => "AVX2",
                     CPUExtensions.AVX512 => "AVX512",
