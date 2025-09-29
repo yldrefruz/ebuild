@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using ebuild.api;
 using ebuild.api.Compiler;
@@ -15,7 +17,7 @@ namespace ebuild.BuildGraph
 
         public CompilationDatabase(string moduleDirectory, string moduleName, string sourceFile)
         {
-            var dbDir = Path.Combine(moduleDirectory, ".ebuild", moduleName);
+            var dbDir = Path.Combine(moduleDirectory, ".ebuild", moduleName, "compdb");
             try
             {
                 Directory.CreateDirectory(dbDir);
@@ -25,9 +27,11 @@ namespace ebuild.BuildGraph
                 // If we can't create the directory, use a temp path that won't work
                 // This allows the class to be constructed but operations will fail gracefully
             }
-            
+
             var sourceFileName = Path.GetFileNameWithoutExtension(sourceFile);
-            _databasePath = Path.Combine(dbDir, $"{sourceFileName}.compile.json");
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(sourceFile));
+            var hexHash = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            _databasePath = Path.Combine(dbDir, $"{sourceFileName}-${hexHash}.compile.json");
             _sourceFile = sourceFile;
         }
 

@@ -34,7 +34,7 @@ namespace ebuild.BuildGraph
                             possibleList = compileCommandsModuleRegistry[parentModuleNode.Module] = [];
                         }
                     }
-                    
+
                     await Compiler.Generate(Settings, cancellationToken, "compile_commands.json", possibleList);
                 }
 
@@ -47,7 +47,7 @@ namespace ebuild.BuildGraph
             else
             {
                 var compilationSuccessful = await Compiler.Compile(Settings, cancellationToken);
-                
+
                 // Update compilation database based on result (only for BuildWorker)
                 if (worker is BuildWorker)
                 {
@@ -60,7 +60,7 @@ namespace ebuild.BuildGraph
                         RemoveCompilationDatabase();
                     }
                 }
-                
+
                 if (!compilationSuccessful)
                 {
                     throw new Exception($"Compilation failed for {Settings.SourceFile}");
@@ -81,7 +81,7 @@ namespace ebuild.BuildGraph
                 // Always compile if output file doesn't exist
                 if (!File.Exists(outputFile))
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Output file {outputFile} not found", Settings.SourceFile, outputFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Output file {outputFile} not found", Settings.SourceFile, outputFile);
                     return false;
                 }
 
@@ -91,7 +91,7 @@ namespace ebuild.BuildGraph
                 // Check if source file is newer than output
                 if (sourceModTime > outputModTime)
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Source file modified after output file", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Source file modified after output file", Settings.SourceFile);
                     return false;
                 }
 
@@ -113,7 +113,7 @@ namespace ebuild.BuildGraph
                 var cachedDefs = entry.Definitions.OrderBy(s => s).ToList();
                 if (!currentDefs.SequenceEqual(cachedDefs))
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Definitions have changed", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Definitions have changed", Settings.SourceFile);
                     return false;
                 }
 
@@ -122,7 +122,7 @@ namespace ebuild.BuildGraph
                 var cachedIncludes = entry.IncludePaths.OrderBy(s => s).ToList();
                 if (!currentIncludes.SequenceEqual(cachedIncludes))
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Include paths have changed", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Include paths have changed", Settings.SourceFile);
                     return false;
                 }
 
@@ -131,7 +131,7 @@ namespace ebuild.BuildGraph
                 var cachedForceIncludes = entry.ForceIncludes.OrderBy(s => s).ToList();
                 if (!currentForceIncludes.SequenceEqual(cachedForceIncludes))
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Force includes have changed", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Force includes have changed", Settings.SourceFile);
                     return false;
                 }
 
@@ -142,14 +142,20 @@ namespace ebuild.BuildGraph
                     allIncludePaths.Insert(0, sourceDir);
 
                 var currentDeps = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths, module);
-                currentDeps.AddRange(Settings.ForceIncludes);
+                // Recursively scan dependencies for each force include
+                foreach (var forceInclude in Settings.ForceIncludes)
+                {
+                    var forceIncludeDeps = DependencyScanner.ScanDependencies(forceInclude, allIncludePaths, module);
+                    currentDeps.Add(forceInclude);
+                    currentDeps.AddRange(forceIncludeDeps);
+                }
                 currentDeps = currentDeps.Distinct().OrderBy(s => s).ToList();
 
                 // Check if dependencies have changed
                 var cachedDeps = entry.Dependencies.OrderBy(s => s).ToList();
                 if (!currentDeps.SequenceEqual(cachedDeps))
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Dependencies have changed", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Dependencies have changed", Settings.SourceFile);
                     return false;
                 }
 
@@ -157,7 +163,7 @@ namespace ebuild.BuildGraph
                 var latestDepTime = DependencyScanner.GetLatestModificationTime(currentDeps);
                 if (latestDepTime > outputModTime)
                 {
-                    Logger.LogInformation("Compiling {sourceFile}: Dependency file modified after output file", Settings.SourceFile);
+                    Logger.LogDebug("Compiling {sourceFile}: Dependency file modified after output file", Settings.SourceFile);
                     return false;
                 }
 
@@ -166,7 +172,7 @@ namespace ebuild.BuildGraph
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("Error checking compilation status for {sourceFile}: {error}. Will compile.", 
+                Logger.LogWarning("Error checking compilation status for {sourceFile}: {error}. Will compile.",
                     Settings.SourceFile, ex.Message);
                 return false;
             }
@@ -192,7 +198,13 @@ namespace ebuild.BuildGraph
                     allIncludePaths.Insert(0, sourceDir);
 
                 var dependencies = DependencyScanner.ScanDependencies(Settings.SourceFile, allIncludePaths, module);
-                dependencies.AddRange(Settings.ForceIncludes);
+                // Recursively scan dependencies for each force include
+                foreach (var forceInclude in Settings.ForceIncludes)
+                {
+                    var forceIncludeDeps = DependencyScanner.ScanDependencies(forceInclude, allIncludePaths, module);
+                    dependencies.Add(forceInclude);
+                    dependencies.AddRange(forceIncludeDeps);
+                }
                 dependencies = dependencies.Distinct().ToList();
 
                 var entry = CompilationDatabase.CreateFromSettings(Settings, Settings.OutputFile);
@@ -202,7 +214,7 @@ namespace ebuild.BuildGraph
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("Failed to update compilation database for {sourceFile}: {error}", 
+                Logger.LogWarning("Failed to update compilation database for {sourceFile}: {error}",
                     Settings.SourceFile, ex.Message);
             }
         }
@@ -225,7 +237,7 @@ namespace ebuild.BuildGraph
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("Failed to remove compilation database entry for {sourceFile}: {error}", 
+                Logger.LogWarning("Failed to remove compilation database entry for {sourceFile}: {error}",
                     Settings.SourceFile, ex.Message);
             }
         }

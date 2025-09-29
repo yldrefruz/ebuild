@@ -43,20 +43,33 @@ namespace ebuild.BuildGraph
                 // Check if any input file is newer than output
                 foreach (var inputFile in Settings.InputFiles)
                 {
-                    if (File.Exists(inputFile))
+                    string foundInputFile = inputFile;
+                    if (!File.Exists(inputFile))
                     {
-                        var inputModTime = File.GetLastWriteTimeUtc(inputFile);
-                        if (inputModTime > outputModTime)
+                        // Search in library paths
+                        bool found = false;
+                        foreach (var libPath in Settings.LibraryPaths)
                         {
-                            Logger.LogInformation("Linking {outputFile}: Input file {inputFile} modified after output file", 
+                            var candidate = Path.Combine(libPath, Path.GetFileName(inputFile));
+                            if (File.Exists(candidate))
+                            {
+                                foundInputFile = candidate;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                        {
+                            Logger.LogInformation("Linking {outputFile}: Input file {inputFile} not found in library paths", 
                                 outputFile, inputFile);
                             return false;
                         }
                     }
-                    else
+                    var inputModTime = File.GetLastWriteTimeUtc(foundInputFile);
+                    if (inputModTime > outputModTime)
                     {
-                        Logger.LogInformation("Linking {outputFile}: Input file {inputFile} not found", 
-                            outputFile, inputFile);
+                        Logger.LogDebug("Linking {outputFile}: Input file {inputFile} modified after output file", 
+                            outputFile, foundInputFile);
                         return false;
                     }
                 }
