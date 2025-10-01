@@ -24,6 +24,7 @@ namespace ebuild.Commands
 
         public override async ValueTask ExecuteAsync(CliFx.Infrastructure.IConsole console)
         {
+            await base.ExecuteAsync(console);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var moduleInstance = (await moduleFile.CreateModuleInstance(ModuleInstancingParams)) ?? throw new Exception("Failed to create module instance");
             var graph = new Graph(moduleInstance);

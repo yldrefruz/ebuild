@@ -315,20 +315,23 @@ namespace ebuild
                 CreateNoWindow = true,
                 FileName = "dotnet",
                 UseShellExecute = false,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
 
-            var p = new Process
-            {
-                StartInfo = psi
-            };
+            var p = new Process { StartInfo = psi };
             p.Start();
+            // Discard output
+            await p.StandardOutput.ReadToEndAsync();
+            await p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();
 
             psi.Arguments = $"sln add {moduleProjectFileLocation}";
             p = new Process { StartInfo = psi };
             p.Start();
+            // Discard output
+            await p.StandardOutput.ReadToEndAsync();
+            await p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();
         }
 

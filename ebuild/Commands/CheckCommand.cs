@@ -9,9 +9,9 @@ namespace ebuild.Commands
     [Command("check", Description = "check the module health and relevant info")]
     public class CheckCommand : ModuleCreatingCommand
     {
-        public override ValueTask ExecuteAsync(IConsole console)
+        public override async ValueTask ExecuteAsync(IConsole console)
         {
-            throw new CommandException("Please specify a check type.");
+            await base.ExecuteAsync(console);
         }
     }
 
@@ -21,6 +21,7 @@ namespace ebuild.Commands
     {
         public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             var file = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var buildGraph = await file.BuildOrGetBuildGraph(ModuleInstancingParams) ?? throw new CommandException(string.Format("Failed to get build graph for {0}", file.GetFilePath()));
             
@@ -42,6 +43,7 @@ namespace ebuild.Commands
     {
         public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var buildGraph = await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams);
             if (buildGraph == null)

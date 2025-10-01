@@ -12,6 +12,8 @@ public class GlobalTestSetup
     {
         Trace.Listeners.Add(new ConsoleTraceListener());
         EBuild.InitializeEBuild();
+        // Optionally enable verbose logging for tests
+        EBuild.VerboseEnabled = true;
     }
 
     [OneTimeTearDown]

@@ -45,6 +45,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
         }
         else
         {
+            Logger.LogTrace("Compiling source file: {file}", Settings.SourceFile);
             var compilationSuccessful = await Compiler.Compile(Settings, cancellationToken);
 
             // Update compilation database based on result (only for BuildWorker)
@@ -80,7 +81,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             // Always compile if output file doesn't exist
             if (!File.Exists(outputFile))
             {
-                Logger.LogDebug("Compiling {sourceFile}: Output file {outputFile} not found", Settings.SourceFile, outputFile);
+                Logger.LogTrace("Compiling {sourceFile}: Output file {outputFile} not found", Settings.SourceFile, outputFile);
                 return false;
             }
 
@@ -90,7 +91,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             // Check if source file is newer than output
             if (sourceModTime > outputModTime)
             {
-                Logger.LogDebug("Compiling {sourceFile}: Source file modified after output file", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Source file modified after output file", Settings.SourceFile);
                 return false;
             }
 
@@ -103,7 +104,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var entry = database.GetEntry();
             if (entry == null)
             {
-                Logger.LogDebug("Compiling {sourceFile}: No compilation database entry found", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: No compilation database entry found", Settings.SourceFile);
                 return false;
             }
 
@@ -112,7 +113,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var cachedDefs = entry.Definitions.OrderBy(s => s).ToList();
             if (!currentDefs.SequenceEqual(cachedDefs))
             {
-                Logger.LogDebug("Compiling {sourceFile}: Definitions have changed", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Definitions have changed", Settings.SourceFile);
                 return false;
             }
 
@@ -121,7 +122,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var cachedIncludes = entry.IncludePaths.OrderBy(s => s).ToList();
             if (!currentIncludes.SequenceEqual(cachedIncludes))
             {
-                Logger.LogDebug("Compiling {sourceFile}: Include paths have changed", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Include paths have changed", Settings.SourceFile);
                 return false;
             }
 
@@ -130,7 +131,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var cachedForceIncludes = entry.ForceIncludes.OrderBy(s => s).ToList();
             if (!currentForceIncludes.SequenceEqual(cachedForceIncludes))
             {
-                Logger.LogDebug("Compiling {sourceFile}: Force includes have changed", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Force includes have changed", Settings.SourceFile);
                 return false;
             }
 
@@ -154,7 +155,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var cachedDeps = entry.Dependencies.OrderBy(s => s).ToList();
             if (!currentDeps.SequenceEqual(cachedDeps))
             {
-                Logger.LogDebug("Compiling {sourceFile}: Dependencies have changed", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Dependencies have changed", Settings.SourceFile);
                 return false;
             }
 
@@ -162,7 +163,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
             var latestDepTime = DependencyScanner.GetLatestModificationTime(currentDeps);
             if (latestDepTime > outputModTime)
             {
-                Logger.LogDebug("Compiling {sourceFile}: Dependency file modified after output file", Settings.SourceFile);
+                Logger.LogTrace("Compiling {sourceFile}: Dependency file modified after output file", Settings.SourceFile);
                 return false;
             }
 
@@ -232,7 +233,7 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
                 Settings.SourceFile);
 
             database.RemoveEntry();
-            Logger.LogDebug("Removed compilation database entry for failed compilation: {sourceFile}", Settings.SourceFile);
+            Logger.LogTrace("Removed compilation database entry for failed compilation: {sourceFile}", Settings.SourceFile);
         }
         catch (Exception ex)
         {

@@ -11,8 +11,9 @@ namespace ebuild.Commands
     [Command("generate", Description = "generate data for the module.")]
     public class GenerateCommand : ModuleCreatingCommand
     {
-        public override ValueTask ExecuteAsync(IConsole console)
+        public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             throw new CommandException("Please specify what to generate.");
         }
     }
@@ -28,6 +29,7 @@ namespace ebuild.Commands
 
         public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
             var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new CommandException("Failed to create module instance.");
             var graph = (await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams))!;

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -20,14 +21,16 @@ public class CompilationSkippingTests
     private string _ebuildExePath = string.Empty;
     private string _testSourceFile = string.Empty;
     private string _testHeaderFile = string.Empty;
+    private readonly Microsoft.Extensions.Logging.ILogger _logger = ebuild.EBuild.LoggerFactory.CreateLogger("CompilationSkippingTests");
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
+        _logger.LogInformation("Setting up test files for CompilationSkippingTests");
         _testOutputDir = Path.Combine(Path.GetTempPath(), "ebuild_test", "compilation_skipping");
         var thisAssemblyLocation = Assembly.GetAssembly(GetType())!.Location;
         _ebuildExePath = Path.Combine(Path.GetDirectoryName(thisAssemblyLocation)!, "ebuild.dll");
-        
+
         // Create test module and source files
         SetupTestFiles();
     }
@@ -35,6 +38,7 @@ public class CompilationSkippingTests
     [OneTimeTearDown]
     public void OneTimeTearDown()
     {
+        _logger.LogInformation("Cleaning up test output directory: {OutputDir}", _testOutputDir);
         try
         {
             if (Directory.Exists(_testOutputDir))
@@ -99,12 +103,12 @@ public class TestModule : ModuleBase
         CleanBuildDirectory();
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
         Assert.That(result.Output, Does.Contain("Compiling"), "Expected compilation output");
-        
+
         // Verify object files were created
         var objectFiles = Directory.GetFiles(_testOutputDir, "*.o", SearchOption.AllDirectories)
             .Concat(Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories))
@@ -119,13 +123,13 @@ public class TestModule : ModuleBase
         FirstBuild_ShouldCompileAllFiles();
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
-        
+
         // Should not see compilation messages for unchanged files
-        Assert.That(result.Output, Does.Not.Contain("Compiling"), 
+        Assert.That(result.Output, Does.Not.Contain("Compiling source file: "),
             "Expected no compilation output for unchanged files");
     }
 
@@ -134,7 +138,7 @@ public class TestModule : ModuleBase
     {
         // Arrange - Ensure first build completed
         FirstBuild_ShouldCompileAllFiles();
-        
+
         // Modify the source file
         Thread.Sleep(1100); // Ensure file timestamp is different
         File.WriteAllText(_testSourceFile, @"
@@ -148,11 +152,11 @@ int main() {
 ");
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
-        Assert.That(result.Output, Does.Contain("Source file modified"), 
+        Assert.That(result.Output, Does.Contain("Source file modified"),
             "Expected compilation due to source file modification");
     }
 
@@ -161,7 +165,7 @@ int main() {
     {
         // Arrange - Ensure first build completed
         FirstBuild_ShouldCompileAllFiles();
-        
+
         // Modify the header file
         Thread.Sleep(1100); // Ensure file timestamp is different
         File.WriteAllText(_testHeaderFile, @"
@@ -172,11 +176,11 @@ int main() {
 ");
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
-        Assert.That(result.Output, Does.Contain("Dependency file modified"), 
+        Assert.That(result.Output, Does.Contain("Dependency file modified"),
             "Expected compilation due to dependency modification");
     }
 
@@ -185,7 +189,7 @@ int main() {
     {
         // Arrange - Ensure first build completed
         FirstBuild_ShouldCompileAllFiles();
-        
+
         // Modify the module to change definitions
         File.WriteAllText(_testModulePath, $@"
 using ebuild.api;
@@ -206,11 +210,11 @@ public class TestModule : ModuleBase
 ");
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
-        Assert.That(result.Output, Does.Contain("Definitions have changed"), 
+        Assert.That(result.Output, Does.Contain("Definitions have changed"),
             "Expected compilation due to definition changes");
     }
 
@@ -219,7 +223,7 @@ public class TestModule : ModuleBase
     {
         // Arrange - Ensure first build completed
         FirstBuild_ShouldCompileAllFiles();
-        
+
         // Delete object file
         var objectFiles = Directory.GetFiles(_testOutputDir, "*.o", SearchOption.AllDirectories)
             .Concat(Directory.GetFiles(_testOutputDir, "*.obj", SearchOption.AllDirectories))
@@ -230,11 +234,11 @@ public class TestModule : ModuleBase
         }
 
         // Act
-        var result = RunEBuildCommand($"build \"{_testModulePath}\"");
+        var result = RunEBuildCommand($"build \"{_testModulePath}\" -v");
 
         // Assert
         Assert.That(result.ExitCode, Is.EqualTo(0), $"Build failed: {result.Output}");
-        Assert.That(result.Output, Does.Contain("Output file").And.Contain("not found"), 
+        Assert.That(result.Output, Does.Contain("Output file").And.Contain("not found"),
             "Expected compilation due to missing output file");
     }
 
@@ -283,7 +287,7 @@ public class TestModule : ModuleBase
             process.Kill();
             return (-1, "Process timed out");
         }
-        
+
         Thread.Sleep(100); // Ensure all output is flushed
         var output = outputBuilder.ToString() + errorBuilder.ToString();
         return (process.ExitCode, output);

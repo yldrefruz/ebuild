@@ -12,7 +12,8 @@ namespace ebuild
 {
     public static class EBuild
     {
-        public static bool DisableLogging = false;
+    public static bool DisableLogging = false;
+    public static bool VerboseEnabled = false;
         // TODO: move the logging to the serilog library.
         private class LoggerFormatter : ConsoleFormatter
         {
@@ -84,7 +85,7 @@ namespace ebuild
             builder
                 .AddConsole()
                 .AddSimpleConsole(options => { options.SingleLine = true; })
-                .AddFilter(level => !DisableLogging && level >= LogLevel.Information && level != LogLevel.None)
+                .AddFilter(level => !DisableLogging && (VerboseEnabled ? level >= LogLevel.Trace : level >= LogLevel.Information) && level != LogLevel.None)
                 .AddConsoleFormatter<LoggerFormatter, ConsoleFormatterOptions>(options => { })
                 .AddProvider(new FileLoggerProvider(
                     new StreamWriter(CreateLogFile(), Encoding.UTF8)))
@@ -122,7 +123,6 @@ namespace ebuild
 
         public static async Task<int> Main(string[] args)
         {
-
             InitializeEBuild();
 
             return await new CliApplicationBuilder()

@@ -12,7 +12,7 @@ namespace ebuild.Commands
 
 
 
-    public abstract class ModuleCreatingCommand : ICommand
+    public abstract class ModuleCreatingCommand : BaseCommand
     {
         [CommandParameter(0, Description = "the module file to build")]
         public required string ModuleFile { get; init; }
@@ -45,6 +45,9 @@ namespace ebuild.Commands
             SelfModuleReference = new api.ModuleReference(ModuleFile)
         };
         private ModuleInstancingParams? _moduleInstancingParamsCache;
-        public abstract ValueTask ExecuteAsync(IConsole console);
+        public override async ValueTask ExecuteAsync(IConsole console)
+        {
+            await base.ExecuteAsync(console);
+        }
     }
 }

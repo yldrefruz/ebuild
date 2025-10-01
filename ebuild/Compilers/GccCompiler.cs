@@ -54,7 +54,6 @@ namespace ebuild.Compilers
             var outputDir = Path.GetDirectoryName(outputFile);
             if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
             {
-                Console.WriteLine($"Creating directory: {outputDir}");
                 Directory.CreateDirectory(outputDir);
             }
 
@@ -249,9 +248,6 @@ namespace ebuild.Compilers
 
             // Source file (must be last)
             args.Add(settings.SourceFile);
-
-            Console.WriteLine($"Running Compiler: {compilerPath} {args}");
-
 
             var startInfo = new ProcessStartInfo
             {

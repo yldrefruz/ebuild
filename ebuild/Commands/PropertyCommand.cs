@@ -6,11 +6,12 @@ using CliFx.Infrastructure;
 namespace ebuild.Commands
 {
     [Command("property", Description = "operations for properties. These are useful for creation of custom scripts or using ebuild without referencing, directly from command line")]
-    public class PropertyCommand : ICommand
+    public class PropertyCommand : BaseCommand
     {
 
-        public virtual ValueTask ExecuteAsync(IConsole console)
+        public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             throw new CommandException("You must specify a subcommand.");
         }
     }
@@ -21,8 +22,9 @@ namespace ebuild.Commands
         [CommandParameter(0, Description = "the name of the property to get")]
         public string PropertyName { get; init; } = string.Empty;
 
-        public override ValueTask ExecuteAsync(IConsole console)
+        public override async ValueTask ExecuteAsync(IConsole console)
         {
+            await base.ExecuteAsync(console);
             if (PropertyName == "ebuild.api.dll")
             {
                 console.Output.WriteLine(EBuild.FindEBuildApiDllPath());
@@ -31,7 +33,6 @@ namespace ebuild.Commands
             {
                 throw new CommandException($"Unknown property '{PropertyName}'");
             }
-            return ValueTask.CompletedTask;
         }
     }
 }
