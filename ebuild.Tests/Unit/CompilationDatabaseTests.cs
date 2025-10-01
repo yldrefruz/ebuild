@@ -109,21 +109,22 @@ public class CompilationDatabaseTests
     }
 
     [Test]
-    public void GetEntry_WithCorruptedFile_ShouldReturnNull()
+    public void GetEntry_WithCorruptedDatabase_ShouldReturnNull()
     {
         // Arrange
-        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
-
-        // Create corrupted file
         var dbDir = Path.Combine(_testDir, ".ebuild", "TestModule");
         Directory.CreateDirectory(dbDir);
-        var dbFile = Path.Combine(dbDir, "test.compile.json");
-        File.WriteAllText(dbFile, "corrupted json content");
+        var dbFile = Path.Combine(dbDir, "compilation.db");
+        
+        // Create corrupted database file (not a valid SQLite database)
+        File.WriteAllText(dbFile, "corrupted database content");
+
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
 
         // Act
         var entry = database.GetEntry();
 
-        // Assert
+        // Assert - Should return null when database is corrupted
         Assert.That(entry, Is.Null);
     }
 
@@ -183,5 +184,48 @@ public class CompilationDatabaseTests
 
         // Act & Assert
         Assert.DoesNotThrow(() => database.RemoveEntry());
+    }
+
+    [Test]
+    public void MultipleSourceFiles_ShouldUseSameDatabase()
+    {
+        // Arrange - Create entries for multiple source files in the same module
+        var database1 = CompilationDatabase.Get(_testDir, "TestModule", "file1.cpp");
+        var database2 = CompilationDatabase.Get(_testDir, "TestModule", "file2.cpp");
+
+        var entry1 = new CompilationEntry
+        {
+            SourceFile = "file1.cpp",
+            OutputFile = "file1.obj",
+            LastCompiled = DateTime.UtcNow,
+            Definitions = new List<string> { "FILE1" }
+        };
+
+        var entry2 = new CompilationEntry
+        {
+            SourceFile = "file2.cpp",
+            OutputFile = "file2.obj",
+            LastCompiled = DateTime.UtcNow,
+            Definitions = new List<string> { "FILE2" }
+        };
+
+        // Act - Save both entries
+        database1.SaveEntry(entry1);
+        database2.SaveEntry(entry2);
+
+        // Assert - Both entries should be retrievable
+        var retrieved1 = database1.GetEntry();
+        var retrieved2 = database2.GetEntry();
+
+        Assert.That(retrieved1, Is.Not.Null);
+        Assert.That(retrieved2, Is.Not.Null);
+        Assert.That(retrieved1!.SourceFile, Is.EqualTo("file1.cpp"));
+        Assert.That(retrieved2!.SourceFile, Is.EqualTo("file2.cpp"));
+        Assert.That(retrieved1.Definitions, Contains.Item("FILE1"));
+        Assert.That(retrieved2.Definitions, Contains.Item("FILE2"));
+
+        // Verify they use the same database file
+        var dbPath = Path.Combine(_testDir, ".ebuild", "TestModule", "compilation.db");
+        Assert.That(File.Exists(dbPath), Is.True, "Database file should exist");
     }
 }
