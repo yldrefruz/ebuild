@@ -109,21 +109,22 @@ public class CompilationDatabaseTests
     }
 
     [Test]
-    public void GetEntry_WithCorruptedFile_ShouldReturnNull()
+    public void GetEntry_WithCorruptedDatabase_ShouldReturnNull()
     {
         // Arrange
-        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
-
-        // Create corrupted file
         var dbDir = Path.Combine(_testDir, ".ebuild", "TestModule");
         Directory.CreateDirectory(dbDir);
-        var dbFile = Path.Combine(dbDir, "test.compile.json");
-        File.WriteAllText(dbFile, "corrupted json content");
+        var dbFile = Path.Combine(dbDir, "compilation.db");
+        
+        // Create corrupted database file (not a valid SQLite database)
+        File.WriteAllText(dbFile, "corrupted database content");
+
+        var database = CompilationDatabase.Get(_testDir, "TestModule", "test.cpp");
 
         // Act
         var entry = database.GetEntry();
 
-        // Assert
+        // Assert - Should return null when database is corrupted
         Assert.That(entry, Is.Null);
     }
 
