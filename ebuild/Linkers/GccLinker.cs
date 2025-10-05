@@ -1,3 +1,4 @@
+using System.CommandLine;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using ebuild.api;
@@ -79,6 +80,7 @@ namespace ebuild.Linkers
             }
             return null;
         }
+
 
         public override async Task<bool> Link(LinkerSettings settings, CancellationToken cancellationToken = default)
         {
