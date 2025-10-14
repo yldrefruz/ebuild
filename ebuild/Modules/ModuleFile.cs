@@ -144,7 +144,6 @@ namespace ebuild
             var fi = new FileInfo(f);
             if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
             {
-                ModuleFileLogger.LogDebug("Module {path} file was already cached. Using cached value", path);
                 return value;
             }
             var mf = new ModuleFile(moduleReference, relativeTo);
@@ -159,7 +158,6 @@ namespace ebuild
             var fi = new FileInfo(f);
             if (ModuleFileRegistry.TryGetValue(fi.FullName, out var value))
             {
-                ModuleFileLogger.LogDebug("Module {path} file was already cached. Using cached value", path);
                 return value;
             }
 

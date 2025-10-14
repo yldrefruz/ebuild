@@ -1,16 +1,38 @@
 using System.Runtime.InteropServices;
-using CliFx;
 using CliFx.Attributes;
+using CliFx.Extensibility;
 using CliFx.Infrastructure;
 using ebuild.api.Toolchain;
 using ebuild.Platforms;
 
 namespace ebuild.Commands
 {
+    public struct OptionsArray()
+    {
+        public Dictionary<string, string> Options { get; set; } = [];
 
 
-
-
+        public static implicit operator Dictionary<string, string>(OptionsArray optionsArray) => optionsArray.Options;
+        public static implicit operator OptionsArray(Dictionary<string, string> dictionary) => new() { Options = dictionary };
+    }
+    public class OptionsArrayConverter : CliFx.Extensibility.BindingConverter<OptionsArray>
+    {
+        public override OptionsArray Convert(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return new OptionsArray();
+            var entries = value.Split(';');
+            var dictionary = new Dictionary<string, string>();
+            foreach (var entry in entries)
+            {
+                var parts = entry.Split('=', 2);
+                if (parts.Length != 2)
+                    throw new FormatException("Invalid dictionary entry format. Expected format: key=value");
+                dictionary[parts[0]] = parts[1];
+            }
+            return dictionary;
+        }
+    }
 
     public abstract class ModuleCreatingCommand : BaseCommand
     {
@@ -29,8 +51,8 @@ namespace ebuild.Commands
         [CommandOption("target-architecture", 't', Description = "the target architecture to use")]
         public Architecture TargetArchitecture { get; init; } = RuntimeInformation.OSArchitecture;
         public string Platform { get; init; } = PlatformRegistry.GetHostPlatform().Name;
-        [CommandOption("option", 'D', Description = "the options to pass into module")]
-        public Dictionary<string, string> Options { get; init; } = [];
+        [CommandOption("option", 'D', Description = "the options to pass into module", Converter = typeof(OptionsArrayConverter))]
+        public OptionsArray Options { get; init; } = new OptionsArray();
 
         public ModuleInstancingParams ModuleInstancingParams => _moduleInstancingParamsCache ??= new()
         {

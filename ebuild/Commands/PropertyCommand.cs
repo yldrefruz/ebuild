@@ -12,7 +12,6 @@ namespace ebuild.Commands
         public override async ValueTask ExecuteAsync(IConsole console)
         {
             await base.ExecuteAsync(console);
-            throw new CommandException("You must specify a subcommand.");
         }
     }
 

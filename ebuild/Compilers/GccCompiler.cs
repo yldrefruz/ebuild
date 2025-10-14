@@ -161,7 +161,8 @@ namespace ebuild.Compilers
                 args.Add($"-march={settings.CPUExtension switch
                 {
                     CPUExtensions.SSE => "pentium3",
-                    CPUExtensions.SSE2 => "pentium4", 
+                    CPUExtensions.SSE2 => "pentium4",
+                    CPUExtensions.SSE4_2 => "nehalem",
                     CPUExtensions.AVX => "sandybridge",
                     CPUExtensions.AVX2 => "haswell",
                     CPUExtensions.AVX512 => "skylake-avx512",

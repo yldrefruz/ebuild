@@ -14,7 +14,6 @@ namespace ebuild.Commands
         public override async ValueTask ExecuteAsync(IConsole console)
         {
             await base.ExecuteAsync(console);
-            throw new CommandException("Please specify what to generate.");
         }
     }
 
@@ -35,9 +34,9 @@ namespace ebuild.Commands
             var graph = (await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams))!;
             var worker = graph.CreateWorker<GenerateCompileCommandsJsonWorker>();
             worker.GlobalMetadata["compile_commands_module_registry"] = new Dictionary<ModuleBase, List<JsonObject>>();
-            if(!ShouldDoForDependencies)
+            if (!ShouldDoForDependencies)
                 worker.GlobalMetadata["target_module"] = createdModule;
-            
+
             await (worker as IWorker).ExecuteAsync(console.RegisterCancellationHandler());
             (worker as IWorker).GlobalMetadata.TryGetValue("compile_commands_module_registry", out object? value);
 
@@ -54,7 +53,37 @@ namespace ebuild.Commands
                 }
             }
         }
-        
+
         private static JsonSerializerOptions writeOptions = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    }
+
+    [Command("generate buildgraph", Description = "generate a representation of the build graph for the module. Write to stdout.")]
+    public class GenerateBuildGraphString : GenerateCommand
+    {
+        public enum Format
+        {
+            String,
+            Html
+        }
+        [CommandOption("format", 'f', Description = "the output format, string or json.")]
+        public Format OutputFormat { get; init; } = Format.String;
+        public override async ValueTask ExecuteAsync(IConsole console)
+        {
+            await base.ExecuteAsync(console);
+            var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
+            var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new CommandException("Failed to create module instance.");
+            var graph = (await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams))!;
+            switch (OutputFormat)
+            {
+                case Format.String:
+                    console.Output.WriteLine(graph.CreateTreeString());
+                    break;
+                case Format.Html:
+                    console.Output.WriteLine(graph.CreateTreeHtml());
+                    break;
+                default:
+                    throw new CommandException($"Unsupported format: {OutputFormat}");
+            }
+        }
     }
 }

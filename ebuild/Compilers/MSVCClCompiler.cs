@@ -268,7 +268,7 @@ namespace ebuild.Compilers
             else
             {
                 args.Add("/MD");
-                if(settings.ModuleType != ModuleType.StaticLibrary)
+                if (settings.ModuleType != ModuleType.StaticLibrary)
                     args.Add("/GL");
                 args.Add("/Gy");
             }

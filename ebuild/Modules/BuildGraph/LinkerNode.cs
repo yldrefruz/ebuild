@@ -4,11 +4,18 @@ using Microsoft.Extensions.Logging;
 
 namespace ebuild.BuildGraph
 {
-    class LinkerNode(LinkerBase linker, LinkerSettings settings) : Node("Linker")
+    class LinkerNode : Node
     {
-        public LinkerBase Linker = linker;
-        public LinkerSettings Settings = settings;
+        public LinkerBase Linker;
+        public LinkerSettings Settings;
         private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("LinkerNode");
+
+        public LinkerNode(LinkerBase linker, LinkerSettings settings) : base("Linker")
+        {
+            Linker = linker;
+            Settings = settings;
+            Name = $"Linker({Path.GetFileName(settings.OutputFile)}) <- [{string.Join(", ", settings.InputFiles.Select(f => Path.GetFileName(f)))}]";
+        }
 
         public override async Task ExecuteAsync(IWorker worker, CancellationToken cancellationToken = default)
         {
@@ -60,7 +67,7 @@ namespace ebuild.BuildGraph
                         }
                         if (!found)
                         {
-                            Logger.LogInformation("Linking {outputFile}: Input file {inputFile} not found in library paths", 
+                            Logger.LogInformation("Linking {outputFile}: Input file {inputFile} not found in library paths",
                                 outputFile, inputFile);
                             return false;
                         }
@@ -68,7 +75,7 @@ namespace ebuild.BuildGraph
                     var inputModTime = File.GetLastWriteTimeUtc(foundInputFile);
                     if (inputModTime > outputModTime)
                     {
-                        Logger.LogDebug("Linking {outputFile}: Input file {inputFile} modified after output file", 
+                        Logger.LogDebug("Linking {outputFile}: Input file {inputFile} modified after output file",
                             outputFile, foundInputFile);
                         return false;
                     }
@@ -79,7 +86,7 @@ namespace ebuild.BuildGraph
             }
             catch (Exception ex)
             {
-                Logger.LogWarning("Error checking linking status for {outputFile}: {error}. Will link.", 
+                Logger.LogWarning("Error checking linking status for {outputFile}: {error}. Will link.",
                     Settings.OutputFile, ex.Message);
                 return false;
             }

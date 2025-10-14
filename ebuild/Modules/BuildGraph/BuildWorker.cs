@@ -1,6 +1,7 @@
 using CliFx.Exceptions;
 using ebuild.api;
 using ebuild.BuildGraph;
+using Microsoft.Extensions.Logging;
 
 namespace ebuild.Modules.BuildGraph;
 
@@ -10,6 +11,7 @@ public class BuildWorker(Graph graph) : IWorker
     ModuleBase Module => this.WorkingGraph.Module;
     public Dictionary<string, object?> GlobalMetadata { get; init; } = [];
     public int MaxWorkerCount { get; set; } = 1;
+    public ILogger Logger { get; init; } = EBuild.LoggerFactory.CreateLogger<BuildWorker>();
 
     public async Task WorkOnNodesAsync(List<Node> nodes, CancellationToken cancellationToken)
     {
@@ -19,6 +21,8 @@ public class BuildWorker(Graph graph) : IWorker
             {
                 try
                 {
+                    Logger.LogDebug("Running pre-build step \"{StepName}\"", step.Name);
+                    using var scopeLogger = Logger.BeginScope("Pre-build step \"{StepName}\"", step.Name);
                     await step.ExecuteAsync(this, cancellationToken);
                 }
                 catch (Exception exception)
@@ -82,6 +86,8 @@ public class BuildWorker(Graph graph) : IWorker
         {
             try
             {
+                Logger.LogDebug("Running post-build step \"{StepName}\"", step.Name);
+                using var scopeLogger = Logger.BeginScope("Post-build step \"{StepName}\"", step.Name);
                 await step.ExecuteAsync(this, cancellationToken);
             }
             catch (Exception exception)

@@ -5,12 +5,19 @@ using Microsoft.Extensions.Logging;
 
 namespace ebuild.Modules.BuildGraph;
 
-class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : Node("CompileSourceFile")
+class CompileSourceFileNode : Node
 {
-    public CompilerBase Compiler = compiler;
-    public CompilerSettings Settings = settings;
+    public CompilerBase Compiler;
+    public CompilerSettings Settings;
     private static readonly object _moduleRegistryLock = new();
     private static readonly ILogger Logger = EBuild.LoggerFactory.CreateLogger("CompileSourceFileNode");
+
+    public CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : base("CompileSourceFile")
+    {
+        Compiler = compiler;
+        Settings = settings;
+        Name = $"Compile(\"{settings.SourceFile}\" -> \"{settings.OutputFile}\")";
+    }
 
     public async override Task ExecuteAsync(IWorker worker, CancellationToken cancellationToken = default)
     {
@@ -55,10 +62,10 @@ class CompileSourceFileNode(CompilerBase compiler, CompilerSettings settings) : 
                 {
                     UpdateCompilationDatabase();
                 }
-                else
-                {
-                    RemoveCompilationDatabase();
-                }
+                // else
+                // {
+                //     RemoveCompilationDatabase();
+                // }
             }
 
             if (!compilationSuccessful)

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using ebuild.api;
 using ebuild.api.Linker;
+using Microsoft.Extensions.Logging;
 
 namespace ebuild.Linkers;
 
@@ -30,6 +31,7 @@ public class MsvcLinkLinker : LinkerBase
         InitPaths(targetArchitecture);
     }
     private static bool PathsInitialized = false;
+    private static ILogger Logger = EBuild.LoggerFactory.CreateLogger<MsvcLinkLinker>();
 
     private void InitPaths(Architecture targetArchitecture)
     {
@@ -139,6 +141,8 @@ public class MsvcLinkLinker : LinkerBase
 
         var tempFile = Path.GetTempFileName();
         await File.WriteAllTextAsync(tempFile, arguments.ToString());
+        Logger.LogDebug("Linker command: {Linker} @{ResponseFile}", LinkExecutablePath, tempFile);
+        Logger.LogDebug("Linker arguments: {Arguments}", arguments.ToString());
         var startInfo = new ProcessStartInfo
         {
             FileName = LinkExecutablePath,
