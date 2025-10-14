@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using ebuild.api;
 using ebuild.api.Compiler;
 
@@ -39,36 +40,21 @@ namespace ebuild.Compilers
             return null;
         }
 
-        public override Task<bool> Generate(CompilerSettings settings, CancellationToken cancellationToken, string type, object? data = null)
+
+        public ArgumentBuilder GenerateCompileCommand(CompilerSettings settings, bool forCompileCommands)
         {
-            //TODO: Implement this method to generate compile commands or other artifacts as needed.
-            throw new NotImplementedException();
-        }
-
-        public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
-        {
-            // Use the output file as provided by the platform
-            var outputFile = settings.OutputFile;
-
-            // Create output directory if it doesn't exist (both the final dir and any intermediate directories)
-            var outputDir = Path.GetDirectoryName(outputFile);
-            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-            }
-
-
-
-            // Determine whether to use gcc or g++ based on settings
-            var compilerPath = settings.CStandard != null ? _gccExecutablePath : _gxxExecutablePath;
-
             // Prepare the command line arguments for gcc/g++
             var args = new ArgumentBuilder();
-            
+
+            if (forCompileCommands)
+            {
+                args.Add(settings.CStandard != null ? _gccExecutablePath : _gxxExecutablePath);
+            }
+
             // Basic compilation flags
             args.Add("-c"); // Compile only, do not link
             args.Add("-o");
-            args.Add(outputFile); // Specify output file
+            args.Add(settings.OutputFile); // Specify output file
 
             // Language standard
             if (settings.CStandard != null)
@@ -76,7 +62,7 @@ namespace ebuild.Compilers
                 args.Add($"-std={settings.CStandard switch
                 {
                     CStandards.C89 => "c89",
-                    CStandards.C99 => "c99", 
+                    CStandards.C99 => "c99",
                     CStandards.C11 => "c11",
                     CStandards.C17 => "c17",
                     _ => "c17"
@@ -199,14 +185,6 @@ namespace ebuild.Compilers
             if (settings.EnableDebugFileCreation)
             {
                 args.Add("-g"); // Generate debug information
-                
-                // For GCC, debug info is embedded in the object file by default
-                // But we can specify a separate debug file path if needed
-                var debugFile = Path.ChangeExtension(outputFile, ".debug");
-                if (!string.IsNullOrEmpty(Path.GetDirectoryName(debugFile)))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(debugFile)!);
-                }
             }
 
             // Preprocessor definitions
@@ -249,6 +227,46 @@ namespace ebuild.Compilers
 
             // Source file (must be last)
             args.Add(settings.SourceFile);
+
+            return args;
+        }
+
+        public override Task<bool> Generate(CompilerSettings settings, CancellationToken cancellationToken, string type, object? data = null)
+        {
+                if (type == "compile_commands.json" && data is List<JsonObject> objectList)
+            {
+                var args = GenerateCompileCommand(settings, true);
+                var commandEntry = new JsonObject
+                {
+                    ["directory"] = Path.GetDirectoryName(settings.SourceFile) ?? Environment.CurrentDirectory,
+                    ["command"] = args.ToString(),
+                    ["output"] = settings.OutputFile,
+                    ["file"] = settings.SourceFile
+                };
+                objectList.Add(commandEntry);
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
+        public override async Task<bool> Compile(CompilerSettings settings, CancellationToken cancellationToken)
+        {
+            // Use the output file as provided by the platform
+            var outputFile = settings.OutputFile;
+
+            // Create output directory if it doesn't exist (both the final dir and any intermediate directories)
+            var outputDir = Path.GetDirectoryName(outputFile);
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
+
+
+
+            // Determine whether to use gcc or g++ based on settings
+            var compilerPath = settings.CStandard != null ? _gccExecutablePath : _gxxExecutablePath;
+            var args = GenerateCompileCommand(settings, false);
+
 
             var startInfo = new ProcessStartInfo
             {
