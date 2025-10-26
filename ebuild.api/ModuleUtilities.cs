@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using ebuild.api.Toolchain;
 
 namespace ebuild.api
 {
@@ -288,5 +290,345 @@ namespace ebuild.api
         /// variable is set.
         /// </summary>
         public static readonly Regex CMakeDefine01Regex = new(@"^#\s*cmakedefine01\s+([A-Za-z_][A-Za-z0-9_]*)\b(?:\s+(.*))?$");
+        /// <summary>
+        /// Returns the path to the cache directory for the specified module instance. The cache
+        /// directory is located under <c>.ebuild/{moduleName}/cache/{variantId}</c> relative to the
+        /// module directory.
+        /// </summary>
+        /// <param name="module">The module instance for which to get the cache directory.</param>
+        /// <returns>The full path to the module's cache directory.</returns>
+        public static string GetModuleCacheDir(ModuleBase module)
+        {
+            return Path.Join(module.Context.ModuleDirectory!.FullName, ".ebuild",
+                            ((IModuleFile)module.Context.SelfReference).GetName(), "cache",
+                            module.GetVariantId().ToString());
+        }
+
+        /// <summary>
+        /// Checks whether a symbol exists as a function, variable, or preprocessor macro by
+        /// generating and compiling a test source file. This is inspired by CMake's
+        /// check_symbol_exists and check_cxx_symbol_exists commands.
+        /// 
+        /// The check generates a minimal source file that includes the specified headers and
+        /// references the symbol. If the header files define the symbol as a macro, it is considered
+        /// available and assumed to work. If the symbol is declared as a function or variable,
+        /// the check ensures that it compiles and links successfully.
+        /// 
+        /// Note: This function does not detect types, enum values, or C++ templates. For those,
+        /// consider using other approaches. For C++ overloaded functions, this check may be unreliable.
+        /// </summary>
+        /// <param name="module">The module for which the compiler will be created.</param>
+        /// <param name="symbol">The symbol to check for (e.g., "fopen", "SEEK_SET", "std::fopen").</param>
+        /// <param name="headers">One or more header files to include, separated by semicolons (e.g., "stdio.h" or "cstdio;iostream").</param>
+        /// <param name="additionalCompilerFlags">Optional additional compiler flags to pass (e.g., include paths, definitions).</param>
+        /// <param name="isCpp">If true, generates a C++ source file (.cpp); otherwise generates a C source file (.c). Default is false (C).</param>
+        /// <returns>True if the symbol exists and can be compiled/linked; false otherwise.</returns>
+        public static async Task<bool> CheckSymbolExists(
+            ModuleBase module,
+            string symbol,
+            string headers,
+            string? additionalCompilerFlags = null,
+            bool isCpp = true)
+        {
+            var cacheDir = GetModuleCacheDir(module);
+            Dictionary<string, bool> cachedValues;
+            if (File.Exists(Path.Combine(cacheDir, "check_symbol.results")))
+            {
+                var lines = File.ReadAllLines(Path.Combine(cacheDir, "check_symbol.results"));
+                // process the results. File looks somewhat like an ini file
+                cachedValues = lines.Select(line => line.Split('=')).ToDictionary(parts => parts[0].Trim(), parts => Boolean.Parse(parts[1].Trim()));
+            }
+            else
+            {
+                cachedValues = [];
+            }
+
+            if (cachedValues.TryGetValue(symbol, out var cachedResult))
+            {
+                return cachedResult;
+            }
+            Directory.CreateDirectory(cacheDir);
+            // Create a temporary directory for the test
+            var tempDir = Path.Combine(Path.GetTempPath(), "ebuild_symbol_check_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                // Parse headers (semicolon-separated list)
+                var headerList = headers.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                // Generate the test source file
+                var extension = isCpp ? "cpp" : "c";
+                var sourceFile = Path.Combine(tempDir, $"check_symbol.{extension}");
+                var objectFile = Path.Combine(tempDir, $"check_symbol.obj");
+
+                var sourceBuilder = new StringBuilder();
+
+                // Include all headers
+                foreach (var header in headerList)
+                {
+                    sourceBuilder.AppendLine($"#include <{header}>");
+                }
+
+                sourceBuilder.AppendLine();
+
+                // Check if symbol is a macro
+                sourceBuilder.AppendLine("#ifndef " + symbol);
+
+                sourceBuilder.AppendLine("  // Symbol is not a macro, try to use it as a function or variable");
+                sourceBuilder.AppendLine("  int main() {");
+                sourceBuilder.AppendLine("      // Reference the symbol to ensure it exists and links");
+                sourceBuilder.AppendLine("      (void)" + symbol + ";");
+                sourceBuilder.AppendLine("    return 0;");
+                sourceBuilder.AppendLine("  }");
+                sourceBuilder.AppendLine("#else");
+                sourceBuilder.AppendLine("  // Symbol is a macro");
+                sourceBuilder.AppendLine("  int main() { return 0; }");
+                sourceBuilder.AppendLine("#endif");
+
+
+                File.WriteAllText(sourceFile, sourceBuilder.ToString());
+
+                // Prepare compiler command
+                var compilerArgs = new List<string>();
+
+                // Add additional flags if provided
+                if (!string.IsNullOrWhiteSpace(additionalCompilerFlags))
+                {
+                    compilerArgs.Add(additionalCompilerFlags);
+                }
+
+                // Add source file and output object file
+                compilerArgs.Add($"\"{sourceFile}\"");
+                var compilerExecutable = module.Context.Toolchain.GetCompilerFactory(module, module.Context.InstancingParams!)?.GetExecutablePath(module, module.Context.InstancingParams!);
+                if (compilerExecutable == null)
+                {
+                    return false;
+                }
+                // Platform-specific compilation flags
+                if (compilerExecutable.Contains("cl.exe", StringComparison.OrdinalIgnoreCase) ||
+                    compilerExecutable.Contains("cl", StringComparison.OrdinalIgnoreCase))
+                {
+                    // MSVC: compile only, no linking
+                    compilerArgs.Add($"/c");
+                    compilerArgs.Add($"/Fo\"{objectFile}\"");
+                    compilerArgs.Add("/nologo");
+                }
+                else
+                {
+                    // GCC/Clang: compile only
+                    compilerArgs.Add("-c");
+                    compilerArgs.Add($"-o");
+                    compilerArgs.Add($"\"{objectFile}\"");
+                }
+
+                var arguments = string.Join(" ", compilerArgs);
+
+                // Run the compiler
+                var processStartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = compilerExecutable,
+                    Arguments = arguments,
+                    WorkingDirectory = tempDir,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = System.Diagnostics.Process.Start(processStartInfo);
+                // read output to prevent deadlocks
+                if (process == null)
+                {
+                    return false;
+                }
+                _ = process.StandardOutput.ReadToEndAsync();
+                _ = process.StandardError.ReadToEndAsync();
+
+                process.WaitForExit();
+
+                // Check if compilation succeeded
+                cachedValues.Add(symbol, process.ExitCode == 0 && File.Exists(objectFile));
+            }
+            catch
+            {
+                // An error occurred during the check
+                return false;
+            }
+            finally
+            {
+                // Write to the cache file
+                var resultLines = cachedValues.Select(kv => $"{kv.Key}={kv.Value}");
+                File.WriteAllLines(Path.Combine(cacheDir, "check_symbol.results"), resultLines);
+                // Clean up temporary directory
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+            return cachedValues[symbol];
+        }
+
+        /// <summary>
+        /// Checks whether one or more header files exist and can be included together by
+        /// generating and compiling a test source file. This is inspired by CMake's
+        /// check_include_files command.
+        /// 
+        /// The check generates a minimal source file that includes the specified headers in order.
+        /// If all headers can be included successfully and the source file compiles, the check
+        /// succeeds. This is useful for checking if headers exist and are compatible when included
+        /// together (e.g., some headers on Darwin/BSD require other headers to be included first).
+        /// </summary>
+        /// <param name="module">The module for which the compiler will be created.</param>
+        /// <param name="includes">One or more header files to include, separated by semicolons (e.g., "stdio.h" or "sys/socket.h;net/if.h"). Headers are included in the order specified.</param>
+        /// <param name="additionalCompilerFlags">Optional additional compiler flags to pass (e.g., include paths, definitions).</param>
+        /// <param name="isCpp">If true, generates a C++ source file (.cpp) and uses the C++ compiler; otherwise generates a C source file (.c) and uses the C compiler. Default is true (C++).</param>
+        /// <returns>True if all headers exist and can be included together successfully; false otherwise.</returns>
+        public static async Task<bool> CheckIncludeFilesExists(
+            ModuleBase module,
+            string includes,
+            string? additionalCompilerFlags = null,
+            bool isCpp = true)
+        {
+            var cacheDir = GetModuleCacheDir(module);
+            Dictionary<string, bool> cachedValues;
+            if (File.Exists(Path.Combine(cacheDir, "check_include_files.results")))
+            {
+                var lines = File.ReadAllLines(Path.Combine(cacheDir, "check_include_files.results"));
+                // process the results. File looks somewhat like an ini file
+                cachedValues = lines.Select(line => line.Split('=')).ToDictionary(parts => parts[0].Trim(), parts => Boolean.Parse(parts[1].Trim()));
+            }
+            else
+            {
+                cachedValues = [];
+            }
+
+            if (cachedValues.TryGetValue(includes, out var cachedResult))
+            {
+                return cachedResult;
+            }
+            Directory.CreateDirectory(cacheDir);
+            // Create a temporary directory for the test
+            var tempDir = Path.Combine(Path.GetTempPath(), "ebuild_include_check_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            try
+            {
+                // Parse headers (semicolon-separated list)
+                var headerList = includes.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                // Generate the test source file
+                var extension = isCpp ? "cpp" : "c";
+                var sourceFile = Path.Combine(tempDir, $"check_include_files.{extension}");
+                var objectFile = Path.Combine(tempDir, $"check_include_files.obj");
+
+                var sourceBuilder = new StringBuilder();
+
+                // Include all headers in order
+                foreach (var header in headerList)
+                {
+                    sourceBuilder.AppendLine($"#include <{header}>");
+                }
+
+                sourceBuilder.AppendLine();
+                sourceBuilder.AppendLine("int main() { return 0; }");
+
+                File.WriteAllText(sourceFile, sourceBuilder.ToString());
+
+                // Prepare compiler command
+                var compilerArgs = new List<string>();
+
+                // Add additional flags if provided
+                if (!string.IsNullOrWhiteSpace(additionalCompilerFlags))
+                {
+                    compilerArgs.Add(additionalCompilerFlags);
+                }
+
+                // Add source file and output object file
+                compilerArgs.Add($"\"{sourceFile}\"");
+                var compilerExecutable = module.Context.Toolchain.GetCompilerFactory(module, module.Context.InstancingParams!)?.GetExecutablePath(module, module.Context.InstancingParams!);
+                if (compilerExecutable == null)
+                {
+                    return false;
+                }
+                // Platform-specific compilation flags
+                if (compilerExecutable.Contains("cl.exe", StringComparison.OrdinalIgnoreCase) ||
+                    compilerExecutable.Contains("cl", StringComparison.OrdinalIgnoreCase))
+                {
+                    // MSVC: compile only, no linking
+                    compilerArgs.Add($"/c");
+                    compilerArgs.Add($"/Fo\"{objectFile}\"");
+                    compilerArgs.Add("/nologo");
+                }
+                else
+                {
+                    // GCC/Clang: compile only
+                    compilerArgs.Add("-c");
+                    compilerArgs.Add($"-o");
+                    compilerArgs.Add($"\"{objectFile}\"");
+                }
+
+                var arguments = string.Join(" ", compilerArgs);
+
+                // Run the compiler
+                var processStartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = compilerExecutable,
+                    Arguments = arguments,
+                    WorkingDirectory = tempDir,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = System.Diagnostics.Process.Start(processStartInfo);
+                // read output to prevent deadlocks
+                if (process == null)
+                {
+                    return false;
+                }
+                _ = process.StandardOutput.ReadToEndAsync();
+                _ = process.StandardError.ReadToEndAsync();
+
+                process.WaitForExit();
+
+                // Check if compilation succeeded
+                cachedValues.Add(includes, process.ExitCode == 0 && File.Exists(objectFile));
+            }
+            catch
+            {
+                // An error occurred during the check
+                return false;
+            }
+            finally
+            {
+                // Write to the cache file
+                var resultLines = cachedValues.Select(kv => $"{kv.Key}={kv.Value}");
+                File.WriteAllLines(Path.Combine(cacheDir, "check_include_files.results"), resultLines);
+                // Clean up temporary directory
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, true);
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+            return cachedValues[includes];
+        }
+
+
     }
 }

@@ -60,6 +60,13 @@ namespace ebuild.api
         public bool HasChanged();
 
         /// <summary>
+        /// Returns the short name of the module (typically the file name without extension or the directory
+        /// name containing the module file).
+        /// </summary>
+        /// <returns>The short module name.</returns>
+        public string GetName();
+
+        /// <summary>
         /// Attempts to resolve a path (or directory) to a concrete module file path. This helper
         /// implements the lookup precedence used by the tooling:
         ///

@@ -515,6 +515,11 @@ namespace ebuild
 
         public ModuleReference GetSelfReference() => _reference;
 
+        public string GetName()
+        {
+            return Name;
+        }
+
         private static readonly Dictionary<string, ModuleFile> ModuleFileRegistry = new();
 
         public static explicit operator ModuleFile(ModuleBase b) => Get(b.Context.SelfReference);
