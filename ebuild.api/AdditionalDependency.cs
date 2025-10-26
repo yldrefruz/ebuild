@@ -1,6 +1,9 @@
 ﻿namespace ebuild.api
 {
     /// <summary>
+    /// 
+    /// CURRENTLY INCOMPLETE.
+    /// 
     /// Represents an additional dependency for a module. This can be either a file or a directory.
     /// 
     /// Points to improve:

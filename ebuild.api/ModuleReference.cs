@@ -4,16 +4,38 @@ using System.Text.RegularExpressions;
 namespace ebuild.api
 {
     [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
+    /// <summary>
+    /// Represents a reference to another module. Module references are parsed from a
+    /// compact string form (see constructor) and may be resolved to concrete file paths
+    /// using the <see cref="ResolveModulePath"/> method which consults several locations
+    /// (relative paths, dependency search paths, environment variables, repository folders, PATH).
+    /// </summary>
     public partial class ModuleReference
     {
+        /// <summary>Absolute or relative path portion of the reference (may be resolved later).</summary>
         private string _path; // Absolute path to file
+
+        /// <summary>The requested output transformer id (defaults to "default").</summary>
         private readonly string _output = "default"; // The output type
+
+        /// <summary>Option map parsed from reference strings (key &amp; value pairs).</summary>
         private readonly Dictionary<string, string> _options = [];
+
+        /// <summary>Requested version token (defaults to "latest").</summary>
         private readonly string _version = "latest";
+
+        /// <summary>Compiled regex used to parse module reference strings.</summary>
         private static readonly Regex ReferenceRegex = ModuleReferenceStringRegex();
 
         private bool _resolved;
 
+        /// <summary>
+        /// Parse a module reference from a compact reference string. The accepted format is:
+        /// [output:]path[@version][?key=value;key2=value2]
+        /// If parsing fails the constructor throws an <see cref="ArgumentException"/>.
+        /// </summary>
+        /// <param name="referenceString">The compact module reference string to parse.</param>
+        /// <exception cref="ArgumentException">Thrown when the input string doesn't match the expected format.</exception>
         public ModuleReference(string referenceString)
         {
             var match = ReferenceRegex.Match(referenceString);
@@ -41,6 +63,13 @@ namespace ebuild.api
         }
 
 
+        /// <summary>
+        /// Construct a module reference from explicit components.
+        /// </summary>
+        /// <param name="outputType">Output transformer id.</param>
+        /// <param name="path">Module path or identifier.</param>
+        /// <param name="version">Version token.</param>
+        /// <param name="options">Options map.</param>
         public ModuleReference(string outputType, string path, string version, Dictionary<string, string> options)
         {
             _output = outputType;
@@ -49,13 +78,31 @@ namespace ebuild.api
             _options = options;
         }
 
+        /// <summary>
+        /// Implicit conversion from string to <see cref="ModuleReference"/>, delegating to the parsing constructor.
+        /// </summary>
+        /// <param name="file">Compact module reference string.</param>
         public static implicit operator ModuleReference(string file) => new(file);
 
+        /// <summary>Return the (possibly unresolved) file path portion of this reference.</summary>
         public string GetFilePath() => _path;
+
+        /// <summary>Return the requested output transformer id for this reference.</summary>
         public string GetOutput() => _output;
+
+        /// <summary>Return the requested version token for this reference.</summary>
         public string GetVersion() => _version;
+
+        /// <summary>Return the option map parsed from the reference string.</summary>
         public Dictionary<string, string> GetOptions() => _options;
 
+        /// <summary>
+        /// Resolve the module path to a concrete file on disk. This method attempts multiple
+        /// strategies in order (direct path, dependency search paths, additional dependency paths,
+        /// EBUILD_DEPENDENCY_PATH environment variable, module-local .repo, user repo locations, PATH).
+        /// Once resolved the internal path is updated and subsequent calls are no-ops.
+        /// </summary>
+        /// <param name="resolverModule">Optional module used as a relative resolution base (provides DependencySearchPaths and ModuleDirectory).</param>
         public void ResolveModulePath(ModuleBase? resolverModule)
         {
             if (_resolved)
@@ -116,6 +163,16 @@ namespace ebuild.api
             }
         }
 
+        /// <summary>
+        /// Test whether the provided candidate path refers to an existing module file. The
+        /// method considers several canonical file name patterns (plain file, index.ebuild.cs,
+        /// &lt;dirname&gt;.ebuild.cs, ebuild.cs) and returns the resolved absolute path in <paramref name="found"/>.
+        /// </summary>
+        /// <param name="path">Candidate path to test.</param>
+        /// <param name="found">Out parameter updated with the resolved path when true is returned.</param>
+        /// <param name="name">Out parameter that receives the short module name (file base name or directory name).</param>
+        /// <param name="relativeTo">Optional module used to provide a relative base directory for resolution.</param>
+        /// <returns><c>true</c> when a module file was found; otherwise <c>false</c>.</returns>
         private static bool HasModule(string path, ref string found, out string name, ModuleBase? relativeTo = null)
         {
             if (File.Exists(Path.GetFullPath(path, relativeTo?.Context.ModuleDirectory?.FullName ?? Directory.GetCurrentDirectory())))
@@ -164,6 +221,10 @@ namespace ebuild.api
 
 
 
+        /// <summary>
+        /// Reconstruct the compact string representation of the reference (matching the input format):
+        /// [output:]path[@version][?key=value;...]
+        /// </summary>
         public override string ToString()
         {
             var optionsString = string.Join(";", _options.Select(kv => $"{kv.Key}={kv.Value}"));
