@@ -327,7 +327,7 @@ namespace ebuild.api
         /// to the field type is attempted using TypeConverters. Conversion failures are logged
         /// to the module context as errors.
         /// </summary>
-        /// <param name="options">String-keyed option map (name &rarr; string value).</param>
+        /// <param name="options">String-keyed option map (name, string value).</param>
         private void SetOptions(Dictionary<string, string> options)
         {
             foreach (var field in GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic))

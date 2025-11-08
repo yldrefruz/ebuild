@@ -89,7 +89,7 @@ namespace ebuild
                 }
                 catch (Exception exception)
                 {
-                    ModuleFileLogger.LogError("Can't find the type: {message}", exception.Message);
+                    ModuleFileLogger.LogError("Can't find the type: {message}", exception.ToString());
                     return null;
                 }
             }
@@ -272,23 +272,41 @@ namespace ebuild
             type = "non-standard";
             return false;
         }
-
-        private ModuleMeta? _meta;
-
-        private ModuleMeta? GetModuleMeta()
+        private static Regex PragmaIncludeRegex = new Regex(@"^\s*#\s*pragma\s*include\s+""(?<path>.+)""\s*$", RegexOptions.Multiline);
+        private static Regex PragmaProjectReferenceRegex = new Regex(@"^\s*#\s*pragma\s*project_reference\s+""(?<path>.+)""\s*$", RegexOptions.Multiline);
+        public string[] GetIncludes()
         {
-            if (_meta != null) return _meta;
-            if (!TryGetModuleMetaFileName(out var name)) return null;
-            try
+            // read file content
+            var lines = File.ReadAllLines(_reference.GetFilePath());
+            var includes = new List<string>();
+            foreach (var line in lines)
             {
-                using var fs = new FileStream(name, FileMode.Open);
-                _meta = JsonSerializer.Deserialize<ModuleMeta>(fs, JsonSerializerOptions.Default);
+                var match = PragmaIncludeRegex.Match(line);
+                if (match.Success)
+                {
+                    var includePath = match.Groups["path"].Value;
+                    includePath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_reference.GetFilePath())!, includePath));
+                    includes.Add(includePath);
+                }
             }
-            catch (FileNotFoundException)
-            {
-            }
+            return [.. includes];
+        }
 
-            return null;
+        public string[] GetProjectReferences()
+        {
+            // read file content
+            var lines = File.ReadAllLines(_reference.GetFilePath());
+            var includes = new List<string>();
+            foreach (var line in lines)
+            {
+                var match = PragmaProjectReferenceRegex.Match(line);
+                if (match.Success)
+                {
+                    var includePath = match.Groups["path"].Value;
+                    includes.Add(includePath);
+                }
+            }
+            return [.. includes];
         }
 
         private async Task CreateOrUpdateSolution()
@@ -410,13 +428,13 @@ namespace ebuild
                                                 </PropertyGroup>
                                                 <ItemGroup>
                                                     <Reference Include="{ebuildApiDll}"/>
-                                                    {GetModuleMeta()?.GetAdditionalReferenceNodes(moduleProjectFileDir, GetDirectory()) ?? string.Empty}
+
+                                                    <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _reference.GetFilePath())}"/>
+                                                    {String.Join("\n", GetIncludes().Select(pr => $@"<Compile Include=""{Path.GetRelativePath(moduleProjectFileDir, pr)}""/>"))}
+
                                                     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0"/>
                                                     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0"/>
-                                                </ItemGroup>
-                                                <ItemGroup>
-                                                    <Compile Include="{Path.GetRelativePath(moduleProjectFileDir, _reference.GetFilePath())}"/>
-                                                    {GetModuleMeta()?.GetAdditionalCompileNodes(moduleProjectFileDir, GetDirectory()) ?? string.Empty}
+                                                    {String.Join("\n", GetProjectReferences().Select(pr => $@"<ProjectReference Include=""{Path.GetRelativePath(moduleProjectFileDir, pr)}""/>"))}
                                                 </ItemGroup>
                                                 <ItemGroup>
                                                     <Compile Remove="**/*"/>
