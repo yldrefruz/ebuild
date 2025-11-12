@@ -6,7 +6,7 @@ EBuild is a powerful, modular C++ build system with a .NET-based CLI designed to
 
 - **Modular Design**: EBuild's core revolves around the concept of modules defined in `.ebuild.cs` files, which encapsulate source files, dependencies, and build configurations.
 - **Multi-Compiler Support**: 
-  - **MSVC Toolchain**: Full support for Microsoft Visual C++ compiler (cl.exe), linker (link.exe), librarian (lib.exe), and resource compiler (rc.exe)
+  - **MSVC Toolchain**: Full support for Microsoft Visual C++ compiler (cl.exe), link (link.exe), lib (lib.exe), and resource compiler (rc.exe)
   - **GCC Toolchain**: Complete GCC/G++ support with AR for static libraries
   - Extensible compiler abstraction allowing custom compiler implementations
 - **Cross-Platform Support**: 
@@ -97,6 +97,23 @@ Options:
 - `-d, --dependencies`: Also generate for dependencies
 
 This generates a compilation database for IDE integration and language servers (clangd, ccls, etc.).
+
+##### Generate module file
+
+Create a scaffolded module file or update the C# solution to include the module's dependencies:
+
+```bash
+ebuild generate module <module-file> [options]
+```
+
+Options:
+- `-o, --outfile <path>`: (when generating) the module file to create (default: `index.ebuild.cs`)
+- `-f, --force`: Overwrite an existing module file
+- `-u, --update`: Update the solution (.sln) to include dependencies of the module
+- `-t, --template <name>`: Module template to use (default: `default`)
+- `-O, --template-options <key=value;...>`: Semicolon-separated key=value pairs passed to the template generator
+
+This command is useful when bootstrapping new example modules or when you want to keep your solution in sync with generated modules.
 
 **Generate Build Graph:**
 ```bash
@@ -321,8 +338,8 @@ public class AdvancedModule : ModuleBase
         // Compiler settings
         CppStandard = CppStandards.Cpp20;
         OptimizationLevel = context.Configuration == "release" 
-            ? OptimizationLevel.O2 
-            : OptimizationLevel.Od;
+            ? OptimizationLevel.Speed 
+            : OptimizationLevel.None;
         
         // Platform-specific configuration
         if (context.Platform.Name == "windows")
@@ -591,7 +608,6 @@ The `examples/` directory contains working examples:
 Located in `examples/zlib/`, this demonstrates:
 - Automatic source downloading and verification
 - SHA256 checksum validation
-- Module options for build configuration
 - Cross-platform static library building
 
 Build it:
@@ -599,14 +615,52 @@ Build it:
 ebuild build examples/zlib/zlib.ebuild.cs
 ```
 
-With options:
-```bash
-ebuild build examples/zlib/zlib.ebuild.cs -D EnableDebug=true -D OptimizeForSize=true
-```
-
 ### Circular Dependency Example
 
 Located in `examples/circular-dependency/`, demonstrates circular dependency detection.
+
+### ICU Example
+
+Located in `examples/icu/`, this is a more involved, real-world example that demonstrates:
+- Downloading and preparing upstream ICU sources and binary data
+- Building several helper tools (icupkg, pkgdata) used to package ICU data
+- Producing ICU libraries (static/shared) and different data package modes (static/shared/common)
+
+Files in `examples/icu/` and their roles:
+- `icu.ebuild.cs` — Top-level meta-module that wires the pieces together. It has a module option `DataMode` (default `static`) which controls how ICU data is provided (`static`, `shared`, or `common`). Building this module triggers the source/data preparation steps.
+- `icu-source.ebuild.cs` — Downloads the ICU sources and the prebuilt binary data (little/big-endian), prepares include files and places data into the module tree. This runs automatically as a prebuild step when required.
+- `icu-common.ebuild.cs` — Builds the core ICU common implementation (`icuuc`). Can transform to static or shared output.
+- `icu-i18n.ebuild.cs` — Builds ICU i18n components used by the library/tools.
+- `icu-toolutil.ebuild.cs` — Utility code used by the ICU packaging tools.
+- `icu-icupkg.ebuild.cs` — Builds the `icupkg` executable used to unpack and inspect ICU data packages.
+- `icu-pkgdata.ebuild.cs` — Builds `pkgdata`, the tool that assembles ICU data libraries from unpacked data.
+- `icu-data.ebuild.cs` — Coordinates building `icupkg` and `pkgdata`, runs them to assemble data libraries, and places resulting data libraries under `Binaries/icudt`.
+- `icu-stubdata.ebuild.cs` — Builds stub data variants used during tool building where full data isn't required.
+
+Quick usage examples:
+- Build the ICU library (default behavior downloads sources and data as needed):
+
+```bash
+ebuild build examples/icu/icu.ebuild.cs
+```
+
+- Build ICU and request the shared library output for ICU core and i18n (use the `output:module` syntax):
+
+```bash
+ebuild build shared:examples/icu/icu.ebuild.cs
+```
+
+- Build ICU but instruct the top-level module to use the `common` data mode (no per-binary data linked):
+
+```bash
+ebuild build examples/icu/icu.ebuild.cs -D DataMode=common
+```
+
+Notes and caveats:
+- Building the ICU example may download upstream ICU archives (sources and prebuilt data). The `icu-source.ebuild.cs` file contains SHA256 checks for the downloads.
+- The `icu.ebuild.cs` header includes license notes — ICU and Unicode data have their own licenses; review them before building.
+- Building ICU fully (pkgdata/icupkg steps) may require a working toolchain and sufficient native tools available on PATH; the example sets PATH for subprocesses where necessary.
+
 
 ## Development
 

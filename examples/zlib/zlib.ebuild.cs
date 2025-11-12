@@ -12,19 +12,8 @@ namespace ebuild.Tests.resources;
 
 public class ZlibEbuild : ModuleBase
 {
-    private const string ZlibVersion = "1.3.1";
-    private const string ZlibUrl = $"https://github.com/madler/zlib/releases/download/v{ZlibVersion}/zlib-{ZlibVersion}.tar.gz";
+    private const string ZlibUrl = "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz";
     private const string ZlibSha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23";
-    
-    // Module options that change the binary output
-    [ModuleOption(Description = "Enable debug symbols and logging", ChangesResultBinary = true)]
-    public bool EnableDebug = false;
-    
-    [ModuleOption(Description = "Enable advanced compression features", ChangesResultBinary = true)]
-    public bool EnableAdvancedFeatures = false;
-    
-    [ModuleOption(Description = "Optimize for size instead of speed", ChangesResultBinary = true)]
-    public bool OptimizeForSize = false;
     
     public ZlibEbuild(ModuleContext context) : base(context)
     {
@@ -33,36 +22,6 @@ public class ZlibEbuild : ModuleBase
         Name = "zlib";
         CStandard = CStandards.C99;
         UseVariants = false;
-        // Setup should be called in constructor as per README
-        // Call setup synchronously instead of using async/await
-        SetupSync();
-    }
-    
-    [OutputTransformer("shared", "shared")]
-    public void TransformToSharedLibrary()
-    {
-        Type = ModuleType.SharedLibrary;
-        // When building as shared library, need to add export definitions
-        if (EnableAdvancedFeatures)
-        {
-            Definitions.Private.Add(new Definition("ZLIB_DLL"));
-        }
-    }
-    
-    [OutputTransformer("static", "static")]
-    public void TransformToStaticLibrary()
-    {
-        Type = ModuleType.StaticLibrary;
-        // This is the default, so nothing special needed
-    }
-    
-    private void SetupSync()
-    {
-        Setup().GetAwaiter().GetResult();
-    }
-
-    public async Task<bool> Setup()
-    {
         var downloadPath = GetDownloadPath();
         var extractPath = GetExtractPath();
         
@@ -100,6 +59,24 @@ public class ZlibEbuild : ModuleBase
         return true;
     }
     
+    [OutputTransformer("shared", "shared")]
+    public void TransformToSharedLibrary()
+    {
+        Type = ModuleType.SharedLibrary;
+        // When building as shared library, need to add export definitions
+        if (EnableAdvancedFeatures)
+        {
+            Definitions.Private.Add(new Definition("ZLIB_DLL"));
+        }
+    }
+
+    [OutputTransformer("static", "static")]
+    public void TransformToStaticLibrary()
+    {
+        Type = ModuleType.StaticLibrary;
+        // This is the default, so nothing special needed
+    }
+    
     private string GetDownloadPath()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ebuild", "zlib");
@@ -115,6 +92,8 @@ public class ZlibEbuild : ModuleBase
     
     private async Task<bool> DownloadZlib(string downloadPath)
     {
+        // Directly using HttpClient to download the file
+        // For simple download tasks see: `icu-source.ebuild.cs` example and ModuleUtilities.GetAndExtractSourceFromArchiveUrl method
         try
         {
             using var client = new HttpClient();
