@@ -61,7 +61,7 @@ class ModuleDeclarationNode : Node
                         if (isResourceFile)
                         {
                             // skip resource files if no resource compiler is available.
-                            Console.WriteLine($"Skipping resource file {sourceFile} as no resource compiler is available in toolchain {Module.Context.Toolchain.Name}");
+                            Logger.LogWarning($"Skipping resource file {sourceFile} as no resource compiler is available in toolchain {Module.Context.Toolchain.Name}");
                             continue;
                         }
                         else

@@ -1,7 +1,9 @@
-﻿using System.Text;
+﻿using System.Reflection;
+using System.Text;
 using CliFx;
 using ebuild.api;
 using ebuild.api.Toolchain;
+using ebuild.Modules;
 using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,8 +14,8 @@ namespace ebuild
 {
     public static class EBuild
     {
-    public static bool DisableLogging = false;
-    public static bool VerboseEnabled = false;
+        public static bool DisableLogging = false;
+        public static bool VerboseEnabled = false;
         // TODO: move the logging to the serilog library.
         private class LoggerFormatter : ConsoleFormatter
         {
@@ -91,6 +93,8 @@ namespace ebuild
                     new StreamWriter(CreateLogFile(), Encoding.UTF8)))
         );
 
+        public static readonly ILogger RootLogger = LoggerFactory.CreateLogger("EBuild");
+
         private static FileStream CreateLogFile()
         {
             var logsDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -106,6 +110,7 @@ namespace ebuild
         }
 
         static bool _initialized = false;
+        public static readonly List<IPlugin> LoadedPlugins = new();
         public static void InitializeEBuild()
         {
             if (_initialized) return;
@@ -113,9 +118,43 @@ namespace ebuild
 
             Console.OutputEncoding = Encoding.UTF8;
             Console.InputEncoding = Encoding.UTF8;
-            AutoRegisterServiceAttribute.RegisterAllInAssembly(typeof(EBuild).Assembly);
-            PlatformRegistry.GetInstance().RegisterAllFromAssembly(typeof(EBuild).Assembly);
-            IToolchainRegistry.Get().RegisterAllFromAssembly(typeof(EBuild).Assembly);
+            /// Read the plugins dir to load plugins from
+            Directory.GetFiles(Path.GetDirectoryName(typeof(EBuild).Assembly.Location)!, "*.ebuild.plugin.dll").ToList()
+                .ForEach(pluginPath =>
+                {
+                    try
+                    {
+                        var assembly = System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(pluginPath);
+                        var pluginTypes = assembly.GetTypes().Where(t => typeof(IPlugin).IsAssignableFrom(t) && !t.IsAbstract);
+                        foreach (var pluginType in pluginTypes)
+                        {
+                            var pluginInstance = (IPlugin)Activator.CreateInstance(pluginType)!;
+                            pluginInstance.Initialize();
+                            LoggerFactory.CreateLogger("EBuild").LogInformation($"Loaded plugin {pluginInstance.Name} from {pluginPath}");
+                            LoadedPlugins.Add(pluginInstance);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggerFactory.CreateLogger("EBuild").LogError(ex, $"Failed to load plugin from {pluginPath}");
+                    }
+                });
+            List<Assembly> toLoadFromAssemblies = [typeof(EBuild).Assembly];
+            foreach (var plugin in LoadedPlugins)
+            {
+                var pluginAssembly = plugin.GetType().Assembly;
+                if (!toLoadFromAssemblies.Contains(pluginAssembly))
+                {
+                    toLoadFromAssemblies.Add(pluginAssembly);
+                }
+            }
+            foreach (var assembly in toLoadFromAssemblies)
+            {
+                AutoRegisterServiceAttribute.RegisterAllInAssembly(assembly);
+                PlatformRegistry.GetInstance().RegisterAllFromAssembly(assembly);
+                IToolchainRegistry.Get().RegisterAllFromAssembly(assembly);
+                ModuleFileGeneratorRegistry.RegisterAllInAssembly(assembly);
+            }
         }
 
 

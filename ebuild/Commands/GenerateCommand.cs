@@ -1,9 +1,12 @@
-﻿using System.Text.Json;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using CliFx;
 using CliFx.Attributes;
 using CliFx.Exceptions;
 using CliFx.Infrastructure;
 using ebuild.api;
+using ebuild.Modules;
 using ebuild.Modules.BuildGraph;
 
 namespace ebuild.Commands
@@ -84,6 +87,41 @@ namespace ebuild.Commands
                 default:
                     throw new CommandException($"Unsupported format: {OutputFormat}");
             }
+        }
+    }
+
+
+    [Command("generate module", Description = "generate a new module file or update the c# solution to include references to dependencies of the module.")]
+    public class GenerateModuleCommand : BaseCommand
+    {
+        override public async ValueTask ExecuteAsync(IConsole console)
+        {
+            await base.ExecuteAsync(console);
+            var generator = FindGenerator(Template) ?? throw new CommandException($"Module file generator '{Template}' not found.");
+            if (!Update)
+                generator.Generate(ModuleFile, Force, TemplateOptions);
+            if (Update)
+            {
+                generator.UpdateSolution(ModuleFile);
+            }
+        }
+
+        [CommandParameter(0, Description = "the module name to create. If not specified, the created file will be index.ebuild.cs", IsRequired = false)]
+        public string ModuleFile { get; init; } = "index.ebuild.cs";
+
+        [CommandOption("force", 'f', Description = "overwrite existing module file if it exists")]
+        public bool Force { get; init; } = false;
+
+        [CommandOption("update", 'u', Description = "update the c# solution to include dependencies of the module")]
+        public bool Update { get; init; } = false;
+
+        [CommandOption("template", 't', Description = "the module template to use when creating a new module file")]
+        public string Template { get; init; } = "default";
+        [CommandOption("template-options", 'O', Description = "the options to pass into the module template, in key=value;key2=value2 format", Converter = typeof(OptionsArrayConverter))]
+        public OptionsArray TemplateOptions { get; init; } = new();
+        IModuleFileGenerator FindGenerator(string Name)
+        {
+            return ModuleFileGeneratorRegistry.Instance.GetAll().First(g => g.Name == Name);
         }
     }
 }

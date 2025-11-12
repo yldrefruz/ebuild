@@ -36,7 +36,7 @@ namespace ebuild.Commands
 
     public abstract class ModuleCreatingCommand : BaseCommand
     {
-        [CommandParameter(0, Description = "the module file to build")]
+        [CommandParameter(0, Description = "the module file to build", IsRequired = false)]
         public string ModuleFile { get; init; } = ".";
         [CommandOption("configuration", 'c', Description = "the build configuration to use")]
         public string Configuration { get; init; } = Config.Get().DefaultBuildConfiguration;

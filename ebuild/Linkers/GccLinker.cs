@@ -171,8 +171,6 @@ namespace ebuild.Linkers
             // Additional linker flags
             arguments.AddRange(settings.LinkerFlags);
 
-            Console.WriteLine($"Running Linker: {(_useGxx ? _gxxExecutablePath : _gccExecutablePath)} {arguments}");
-
             var startInfo = new ProcessStartInfo
             {
                 FileName = _useGxx ? _gxxExecutablePath : _gccExecutablePath,

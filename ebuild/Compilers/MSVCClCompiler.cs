@@ -102,10 +102,9 @@ namespace ebuild.Compilers
                     File.Delete(tempFilePath); // Clean up the temporary file
                     break; // Exit the loop if we have write access
                 }
-                catch (IOException exception)
+                catch (IOException)
                 {
                     // If an IOException occurs, it means we don't have write access yet
-                    Console.WriteLine($"Waiting for write access to {filePath}. Exception: {exception.Message}");
                     retries--;
                     if (retries <= 0)
                     {

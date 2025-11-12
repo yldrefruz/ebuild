@@ -3,13 +3,13 @@ using System.Text.RegularExpressions;
 
 namespace ebuild.api
 {
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     /// <summary>
     /// Represents a reference to another module. Module references are parsed from a
     /// compact string form (see constructor) and may be resolved to concrete file paths
     /// using the <see cref="ResolveModulePath"/> method which consults several locations
     /// (relative paths, dependency search paths, environment variables, repository folders, PATH).
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public partial class ModuleReference
     {
         /// <summary>Absolute or relative path portion of the reference (may be resolved later).</summary>

@@ -125,7 +125,6 @@ namespace ebuild.Linkers
                     }
                     Directory.CreateDirectory(outputDirForLib);
 
-                    Console.WriteLine($"Running ar to extract: {_arExecutablePath} @{extractTempFile}");
                     await File.WriteAllTextAsync(extractTempFile, extractArgs.ToString(), cancellationToken);
                     var extractStartInfo = new ProcessStartInfo
                     {
@@ -171,7 +170,6 @@ namespace ebuild.Linkers
             arguments.AddRange(objectInputs);
 
             var tempFile = Path.GetTempFileName();
-            Console.WriteLine($"Running ar: {_arExecutablePath} @{tempFile}");
             await File.WriteAllTextAsync(tempFile, arguments.ToString(), cancellationToken);
             var startInfo = new ProcessStartInfo
             {
@@ -195,41 +193,6 @@ namespace ebuild.Linkers
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(cancellationToken);
             File.Delete(tempFile);
-
-            /*  We are taking care of the symbol table with 's' flag in ar itself.
-            // Optionally run ranlib to generate or update the symbol table index
-            if (process.ExitCode == 0)
-            {
-                var ranlibPath = FindExecutable("ranlib");
-                Console.WriteLine($"Running ranlib: {ranlibPath} \"{settings.OutputFile}\"");
-                if (!string.IsNullOrEmpty(ranlibPath))
-                {
-                    var ranlibStartInfo = new ProcessStartInfo
-                    {
-                        FileName = ranlibPath,
-                        Arguments = $"\"{settings.OutputFile}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        StandardErrorEncoding = System.Text.Encoding.UTF8,
-                        StandardOutputEncoding = System.Text.Encoding.UTF8,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-
-                    var ranlibProcess = new Process { StartInfo = ranlibStartInfo };
-                    ranlibProcess.OutputDataReceived += (sender, args) => Console.WriteLine(args.Data);
-                    ranlibProcess.ErrorDataReceived += (sender, args) => Console.Error.WriteLine(args.Data);
-                    ranlibProcess.Start();
-                    ranlibProcess.BeginOutputReadLine();
-                    ranlibProcess.BeginErrorReadLine();
-                    await ranlibProcess.WaitForExitAsync(cancellationToken);
-                    if (ranlibProcess.ExitCode != 0)
-                    {
-                        return false;
-                    }
-                }
-            } */
-
             return process.ExitCode == 0;
         }
     }
