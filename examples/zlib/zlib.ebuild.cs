@@ -51,9 +51,6 @@ public class ZlibEbuild : ModuleBase
             throw new Exception("Zlib extraction failed");
         }
 
-        // Set up source files
-        SetupSourceFiles(extractPath);
-
         Console.WriteLine("Zlib setup completed successfully.");
     }
 
