@@ -14,7 +14,7 @@ public class ZlibEbuild : ModuleBase
 {
     private const string ZlibUrl = "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz";
     private const string ZlibSha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23";
-    
+
     public ZlibEbuild(ModuleContext context) : base(context)
     {
         // Set default type, can be overridden by output transformers
@@ -24,50 +24,45 @@ public class ZlibEbuild : ModuleBase
         UseVariants = false;
         var downloadPath = GetDownloadPath();
         var extractPath = GetExtractPath();
-        
+
         // Check if already downloaded and extracted
         if (Directory.Exists(extractPath) && File.Exists(Path.Combine(extractPath, "zlib.h")))
         {
             Console.WriteLine("Zlib already downloaded and extracted.");
             SetupSourceFiles(extractPath);
-            return true;
         }
-        
+
         // Download zlib if not already present
         if (!File.Exists(downloadPath) || !ValidateChecksum(downloadPath))
         {
-            Console.WriteLine($"Downloading zlib {ZlibVersion}...");
-            if (!await DownloadZlib(downloadPath))
+            Console.WriteLine($"Downloading zlib 1.3.1 ...");
+            if (!DownloadZlib(downloadPath).GetAwaiter().GetResult())
             {
                 Console.WriteLine("Failed to download zlib");
-                return false;
+                throw new Exception("Zlib download failed");
             }
         }
-        
+
         // Extract zlib
         Console.WriteLine("Extracting zlib...");
         if (!ExtractZlib(downloadPath, extractPath))
         {
             Console.WriteLine("Failed to extract zlib");
-            return false;
+            throw new Exception("Zlib extraction failed");
         }
-        
+
         // Set up source files
         SetupSourceFiles(extractPath);
-        
+
         Console.WriteLine("Zlib setup completed successfully.");
-        return true;
     }
-    
+
     [OutputTransformer("shared", "shared")]
     public void TransformToSharedLibrary()
     {
         Type = ModuleType.SharedLibrary;
         // When building as shared library, need to add export definitions
-        if (EnableAdvancedFeatures)
-        {
-            Definitions.Private.Add(new Definition("ZLIB_DLL"));
-        }
+        Definitions.Private.Add(new Definition("ZLIB_DLL"));
     }
 
     [OutputTransformer("static", "static")]
@@ -76,20 +71,20 @@ public class ZlibEbuild : ModuleBase
         Type = ModuleType.StaticLibrary;
         // This is the default, so nothing special needed
     }
-    
+
     private string GetDownloadPath()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ebuild", "zlib");
         Directory.CreateDirectory(tempDir);
-        return Path.Combine(tempDir, $"zlib-{ZlibVersion}.tar.gz");
+        return Path.Combine(tempDir, $"zlib-1.3.1.tar.gz");
     }
-    
+
     private string GetExtractPath()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ebuild", "zlib");
-        return Path.Combine(tempDir, $"zlib-{ZlibVersion}");
+        return Path.Combine(tempDir, $"zlib-1.3.1");
     }
-    
+
     private async Task<bool> DownloadZlib(string downloadPath)
     {
         // Directly using HttpClient to download the file
@@ -103,10 +98,10 @@ public class ZlibEbuild : ModuleBase
                 Console.WriteLine($"Failed to download zlib: {response.StatusCode}");
                 return false;
             }
-            
+
             var bytes = await response.Content.ReadAsByteArrayAsync();
             await File.WriteAllBytesAsync(downloadPath, bytes);
-            
+
             return ValidateChecksum(downloadPath);
         }
         catch (Exception ex)
@@ -115,7 +110,7 @@ public class ZlibEbuild : ModuleBase
             return false;
         }
     }
-    
+
     private bool ValidateChecksum(string filePath)
     {
         try
@@ -124,7 +119,7 @@ public class ZlibEbuild : ModuleBase
             using var stream = File.OpenRead(filePath);
             var hash = sha256.ComputeHash(stream);
             var hashString = Convert.ToHexString(hash).ToLowerInvariant();
-            
+
             var isValid = hashString == ZlibSha256;
             if (!isValid)
             {
@@ -138,7 +133,7 @@ public class ZlibEbuild : ModuleBase
             return false;
         }
     }
-    
+
     private bool ExtractZlib(string downloadPath, string extractPath)
     {
         try
@@ -148,18 +143,18 @@ public class ZlibEbuild : ModuleBase
                 Directory.Delete(extractPath, true);
             }
             Directory.CreateDirectory(extractPath);
-            
+
             // Extract tar.gz file
             using var originalFileStream = File.OpenRead(downloadPath);
             using var gzipStream = new GZipStream(originalFileStream, CompressionMode.Decompress);
             using var tarStream = new MemoryStream();
-            
+
             gzipStream.CopyTo(tarStream);
             tarStream.Position = 0;
-            
+
             // Simple tar extraction (basic implementation)
             ExtractTar(tarStream, Path.GetDirectoryName(extractPath)!);
-            
+
             return true;
         }
         catch (Exception ex)
@@ -168,7 +163,7 @@ public class ZlibEbuild : ModuleBase
             return false;
         }
     }
-    
+
     private void ExtractTar(Stream tarStream, string destinationDirectory)
     {
         var buffer = new byte[100];
@@ -177,25 +172,25 @@ public class ZlibEbuild : ModuleBase
             // Read filename
             var read = tarStream.Read(buffer, 0, 100);
             if (read < 100) break;
-            
+
             var name = Encoding.ASCII.GetString(buffer).TrimEnd('\0');
             if (string.IsNullOrEmpty(name)) break;
-            
+
             // Skip to size field (at offset 124)
             tarStream.Position += 24;
-            
+
             // Read size
             tarStream.Read(buffer, 0, 12);
             var sizeString = Encoding.ASCII.GetString(buffer, 0, 12).TrimEnd('\0', ' ');
             var size = Convert.ToInt32(sizeString, 8);
-            
+
             // Skip to data (at offset 512)
             tarStream.Position = ((tarStream.Position - 1) / 512 + 1) * 512;
-            
+
             // Extract file
             var filePath = Path.Combine(destinationDirectory, name);
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-            
+
             if (!name.EndsWith('/') && size > 0)
             {
                 using var fileStream = File.Create(filePath);
@@ -208,13 +203,13 @@ public class ZlibEbuild : ModuleBase
                     remaining -= actualRead;
                 }
             }
-            
+
             // Skip to next 512-byte boundary
             var pos = tarStream.Position;
             tarStream.Position = ((pos - 1) / 512 + 1) * 512;
         }
     }
-    
+
     public void SetupSourceFiles(string extractPath)
     {
         // Add main zlib source files
@@ -224,7 +219,7 @@ public class ZlibEbuild : ModuleBase
             "gzread.c", "gzwrite.c", "infback.c", "inffast.c", "inflate.c", "inftrees.c",
             "trees.c", "uncompr.c", "zutil.c"
         };
-        
+
         foreach (var sourceFile in sourceFiles)
         {
             var fullPath = Path.Combine(extractPath, sourceFile);
@@ -233,7 +228,7 @@ public class ZlibEbuild : ModuleBase
                 SourceFiles.Add(fullPath);
             }
         }
-        
+
         // Add include directories
         Includes.Add(extractPath);
         if (Context.Platform.Name == "unix")
@@ -246,28 +241,5 @@ public class ZlibEbuild : ModuleBase
             Definitions.Private.Add(new Definition("_CRT_NONSTDC_NO_DEPRECATE"));
         }
 
-        // Apply module options to definitions
-        if (EnableDebug)
-        {
-            Definitions.Private.Add(new Definition("DEBUG"));
-            Definitions.Private.Add(new Definition("ZLIB_DEBUG"));
-        }
-        
-        if (EnableAdvancedFeatures)
-        {
-            Definitions.Private.Add(new Definition("ZLIB_ADVANCED"));
-            // Enable all compression features
-            Definitions.Private.Add(new Definition("NO_GZIP=0"));
-        }
-        
-        if (OptimizeForSize)
-        {
-            Definitions.Private.Add(new Definition("ZLIB_SMALL"));
-            OptimizationLevel = OptimizationLevel.Size;
-        }
-        else
-        {
-            OptimizationLevel = OptimizationLevel.Speed;
-        }
     }
 }
