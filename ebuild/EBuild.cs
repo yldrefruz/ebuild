@@ -118,8 +118,9 @@ namespace ebuild
 
             Console.OutputEncoding = Encoding.UTF8;
             Console.InputEncoding = Encoding.UTF8;
-            /// Read the plugins dir to load plugins from
-            Directory.GetFiles(Path.GetDirectoryName(typeof(EBuild).Assembly.Location)!, "*.ebuild.plugin.dll").ToList()
+            // Read the plugins dir to load plugins from
+            // This is disabled for security reasons for now. A better and safe plugin system is needed.
+            /* Directory.GetFiles(Path.GetDirectoryName(typeof(EBuild).Assembly.Location)!, "*.ebuild.plugin.dll").ToList()
                 .ForEach(pluginPath =>
                 {
                     try
@@ -138,7 +139,7 @@ namespace ebuild
                     {
                         LoggerFactory.CreateLogger("EBuild").LogError(ex, $"Failed to load plugin from {pluginPath}");
                     }
-                });
+                }); */
             List<Assembly> toLoadFromAssemblies = [typeof(EBuild).Assembly];
             foreach (var plugin in LoadedPlugins)
             {
