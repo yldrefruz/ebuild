@@ -29,7 +29,7 @@ public class ZlibEbuild : ModuleBase
         if (Directory.Exists(extractPath) && File.Exists(Path.Combine(extractPath, "zlib.h")))
         {
             Console.WriteLine("Zlib already downloaded and extracted.");
-            SetupSourceFiles(extractPath);
+            
         }
 
         // Download zlib if not already present
@@ -51,6 +51,8 @@ public class ZlibEbuild : ModuleBase
             throw new Exception("Zlib extraction failed");
         }
 
+        SetupSourceFiles(extractPath);
+        
         Console.WriteLine("Zlib setup completed successfully.");
     }
 
