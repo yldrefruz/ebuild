@@ -177,7 +177,7 @@ public class ZlibEbuild : ModuleBase
             tarStream.Position += 24;
 
             // Read size
-            tarStream.Read(buffer, 0, 12);
+            tarStream.ReadExactly(buffer, 0, 12);
             var sizeString = Encoding.ASCII.GetString(buffer, 0, 12).TrimEnd('\0', ' ');
             var size = Convert.ToInt32(sizeString, 8);
 
