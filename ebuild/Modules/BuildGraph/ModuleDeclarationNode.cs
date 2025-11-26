@@ -176,8 +176,15 @@ class ModuleDeclarationNode : Node
                 var linkerNode = new LinkerNode(linker, linkerSettings);
                 AddChild(linkerNode, AccessLimit.Private);
             }
-
-            //TODO: Additional Dependencies nodes.
+            // Additional dependency nodes.
+            List<AdditionalDependency> additionalDependencies = [];
+            additionalDependencies.AddRange(Module.AdditionalDependencies.Joined());
+            additionalDependencies.AddRange(effectingChildren.SelectMany(v => v.Module.AdditionalDependencies.Public));
+            foreach (var additionalDependency in additionalDependencies)
+            {
+                var additionalDependencyNode = new AdditionalDependencyNode(additionalDependency);
+                AddChild(additionalDependencyNode, AccessLimit.Private);
+            }
             // postbuild steps
             foreach (var step in Module.PostBuildSteps)
             {

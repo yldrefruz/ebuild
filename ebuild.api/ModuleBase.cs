@@ -9,7 +9,6 @@ using ebuild.api.Toolchain;
 
 namespace ebuild.api
 {
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     /// <summary>
     /// Base class for all module definitions used by the build system.
     ///
@@ -18,12 +17,11 @@ namespace ebuild.api
     /// The build system reads these fields when constructing the build graph and invoking
     /// compilers/linkers.
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public abstract class ModuleBase
     {
         /// <summary>
         /// Per-access-limit preprocessor definitions for the C/C++ preprocessor.
-        /// Use <see cref="Definitions.Public"/> for exported definitions and <see cref="Definitions.Private"/>
-        /// for private-only definitions.
         /// </summary>
         public AccessLimitList<Definition> Definitions = new();
 
@@ -49,8 +47,7 @@ namespace ebuild.api
         public AccessLimitList<string> ResourceIncludes = new();
 
         /// <summary>
-        /// Forced include directories. These directories are always added to the compiler
-        /// invocation (for example via <c>-isystem</c> or equivalent).
+        /// Forced include directories. These headers are included at the start of every translation unit.
         /// </summary>
         public AccessLimitList<string> ForceIncludes = new();
 
@@ -219,7 +216,11 @@ namespace ebuild.api
         public void PostConstruction()
         {
             OutputFileName ??= string.IsNullOrEmpty(OutputFileName) ? Name : OutputFileName;
-            AdditionalDependencies.Joined().ForEach(d => d.SetOwnerModule(this));
+            AdditionalDependencies.Joined().ForEach(d =>
+            {
+                d.OwnerModule = this;
+                d.ResolveDependency();
+            });
             Dependencies.Joined().ForEach(r => r.ResolveModulePath(this));
             if (!Context.RequestedOutput.Equals("default", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -412,8 +413,8 @@ namespace ebuild.api
         public string GetBinaryOutputDirectory()
         {
             if (UseVariants)
-                return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName(), GetVariantId().ToString()) + Path.DirectorySeparatorChar;
-            return Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName()) + Path.DirectorySeparatorChar;
+                return Path.TrimEndingDirectorySeparator(Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName(), GetVariantId().ToString()) + Path.DirectorySeparatorChar);
+            return Path.TrimEndingDirectorySeparator(Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName()) + Path.DirectorySeparatorChar);
         }
 
 
@@ -421,7 +422,7 @@ namespace ebuild.api
         /// <summary>
         /// Returns the full path to the produced binary file (executable or library) for the selected
         /// output transformer and variant. The file name is composed from <see cref="OutputFileName"/>
-        /// and an extension chosen according to <see cref="Type"/> and <see cref="Context.Platform"/>.
+        /// and an extension chosen according to <see cref="Type"/> and <see cref="ModuleContext.Platform"/>.
         /// </summary>
         /// <returns>Absolute path to the output binary file.</returns>
         public string GetBinaryOutputPath()

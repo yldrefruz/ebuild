@@ -78,8 +78,18 @@ public class BuildWorker(Graph graph) : IWorker
                 }
             }
         }
-        // 3rd run additional dependency nodes in parallel
-        // TODO: #20 Additional dependency nodes.
+        // 3rd run additional dependency nodes non-parallel
+        foreach( var node in nodes.Where(n => n is AdditionalDependencyNode).Cast<AdditionalDependencyNode>())
+        {
+            try
+            {
+                await node.ExecuteAsync(this, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw new CliFxException($"Processing additional dependency failed: {ex.Message}", 1, false, ex);
+            }
+        }
         
         // 4th run post-build steps non-parallel
         foreach (var step in nodes.Where(n => n is BuildStepNode bsn && bsn.stepType == BuildStepNode.StepType.PostBuild).Cast<BuildStepNode>())
