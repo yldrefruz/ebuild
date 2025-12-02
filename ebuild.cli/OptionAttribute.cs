@@ -3,15 +3,15 @@ using System.Reflection;
 namespace ebuild.cli;
 
 [AttributeUsage(AttributeTargets.Field)]
-class OptionAttribute : Attribute
+public class OptionAttribute : Attribute
 {
-    public string? Name { get;}
+    public string? Name { get; }
     public string? ShortName { get; set; }
     public string? Description { get; set; }
-    public int MinimumCount {get; set;} = 0;
-    public int MaximumCount {get; set;} = int.MaxValue;
-    public Type? ConverterType {get;set;} = null;
-    public bool IsLocalOnly {get;set;} = false;
+    public int MinimumCount { get; set; } = 0;
+    public int MaximumCount { get; set; } = int.MaxValue;
+    public Type? ConverterType { get; set; } = null;
+    public bool IsLocalOnly { get; set; } = false;
     public OptionAttribute()
     {
         Name = null;
