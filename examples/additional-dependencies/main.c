@@ -36,6 +36,4 @@ int main(int argc, char** argv)
     snprintf(example_buffer, sizeof(example_buffer), "%s/example.txt", path_buffer);
     fprintf(stdout, "Open file at path: %s\n", example_buffer);
     print_file_content(example_buffer);
-    
-
 }

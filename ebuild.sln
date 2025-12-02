@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild.api", "ebuild.api\eb
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild.Tests", "ebuild.Tests\ebuild.Tests.csproj", "{7692B2EE-0A86-48F5-A50C-728283575BF8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ebuild.cli", "ebuild.cli\ebuild.cli.csproj", "{F04C8896-560B-45E1-B251-690EB277FDB6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -25,5 +27,9 @@ Global
 		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7692B2EE-0A86-48F5-A50C-728283575BF8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F04C8896-560B-45E1-B251-690EB277FDB6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F04C8896-560B-45E1-B251-690EB277FDB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F04C8896-560B-45E1-B251-690EB277FDB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F04C8896-560B-45E1-B251-690EB277FDB6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
