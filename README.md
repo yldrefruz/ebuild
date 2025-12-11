@@ -60,6 +60,36 @@ For the most up-to-date command usage, use:
 ebuild --help
 ```
 
+##### Version Command
+
+Display the current version of ebuild:
+```bash
+ebuild version
+```
+
+##### Update Command
+
+Check for and install updates to ebuild:
+
+**Check for updates without installing:**
+```bash
+ebuild update --check-only
+```
+
+**Install the latest version:**
+```bash
+ebuild update
+```
+
+The update command will:
+- Query GitHub for the latest release
+- Compare with your current version
+- Download the appropriate binary for your platform (Linux/Windows)
+- Verify SHA256 checksum if available
+- Extract and replace the current installation
+
+**Note:** If you encounter API rate limits, set the `GITHUB_TOKEN` environment variable to increase your rate limit.
+
 ##### Build Command
 
 Compile and link the specified module:
