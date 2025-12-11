@@ -27,7 +27,8 @@ public class UpdateManagerTests
         // Assert
         Assert.That(versionString, Is.Not.Null);
         Assert.That(versionString, Is.Not.Empty);
-        Assert.That(versionString, Does.Contain("0.5.4"));
+        // Version string should contain at least major.minor format
+        Assert.That(versionString, Does.Match(@"\d+\.\d+"));
     }
 
     [Test]

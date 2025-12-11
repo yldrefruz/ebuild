@@ -329,11 +329,25 @@ public class UpdateManager
         using var memoryStream = new MemoryStream(zipData);
         using var zipInputStream = new ZipInputStream(memoryStream);
         
+        var fullDestinationPath = Path.GetFullPath(destinationPath);
+        var executableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ebuild.exe" : "ebuild";
+        
         ZipEntry? entry;
         while ((entry = zipInputStream.GetNextEntry()) != null)
         {
-            var entryPath = Path.Combine(destinationPath, entry.Name);
-            var directoryName = Path.GetDirectoryName(entryPath);
+            // Sanitize entry name to prevent path traversal (zip slip vulnerability)
+            var sanitizedName = entry.Name.Replace('\\', '/');
+            var entryPath = Path.Combine(destinationPath, sanitizedName);
+            var fullEntryPath = Path.GetFullPath(entryPath);
+            
+            // Ensure the extracted file is within the destination directory
+            if (!fullEntryPath.StartsWith(fullDestinationPath + Path.DirectorySeparatorChar) &&
+                fullEntryPath != fullDestinationPath)
+            {
+                throw new InvalidOperationException($"Entry is outside the target directory: {entry.Name}");
+            }
+            
+            var directoryName = Path.GetDirectoryName(fullEntryPath);
             
             if (!string.IsNullOrEmpty(directoryName))
             {
@@ -342,18 +356,18 @@ public class UpdateManager
 
             if (!entry.IsDirectory)
             {
-                using var fileStream = File.Create(entryPath);
+                using var fileStream = File.Create(fullEntryPath);
                 zipInputStream.CopyTo(fileStream);
                 
-                // Set executable permission on Unix-like systems
+                // Set executable permission on Unix-like systems for the main executable
                 if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    // Make executable
-                    if (entry.Name.EndsWith("ebuild") || entry.Name.Contains("/ebuild"))
+                    var fileName = Path.GetFileName(fullEntryPath);
+                    if (fileName == executableName)
                     {
                         try
                         {
-                            File.SetUnixFileMode(entryPath, 
+                            File.SetUnixFileMode(fullEntryPath, 
                                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);

@@ -10,16 +10,14 @@ namespace ebuild.Commands;
 [Command("version", Description = "Display the current version of ebuild")]
 public class VersionCommand : BaseCommand
 {
-    public override ValueTask ExecuteAsync(IConsole console)
+    public override async ValueTask ExecuteAsync(IConsole console)
     {
-        base.ExecuteAsync(console);
+        await base.ExecuteAsync(console);
 
         var version = UpdateManager.GetCurrentVersion();
         var versionString = UpdateManager.GetCurrentVersionString();
 
         console.Output.WriteLine($"ebuild version {versionString}");
         console.Output.WriteLine($"Assembly version: {version}");
-
-        return ValueTask.CompletedTask;
     }
 }
