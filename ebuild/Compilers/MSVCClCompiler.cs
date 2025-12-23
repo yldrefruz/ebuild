@@ -329,26 +329,47 @@ namespace ebuild.Compilers
                 WorkingDirectory = Path.GetDirectoryName(settings.SourceFile) ?? Environment.CurrentDirectory
             };
             var process = new Process { StartInfo = startInfo };
+            List<KeyValuePair<string, string>> recievedData = new List<KeyValuePair<string, string>>();
             process.ErrorDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    Console.Error.WriteLine(e.Data);
+                    recievedData.Add(new KeyValuePair<string, string>("error", e.Data));
+                    // Console.Error.WriteLine(e.Data);
                 }
             };
             process.OutputDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    Console.Out.WriteLine(e.Data);
+                    recievedData.Add(new KeyValuePair<string, string>("output", e.Data));
+                    // Console.Out.WriteLine(e.Data);
                 }
             };
             process.Start();
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
             await process.WaitForExitAsync(cancellationToken);
+            // write in the order received
+            lock (writeLocker)
+            {
+                foreach (var data in recievedData)
+                {
+                    if (data.Key is "error")
+                    {
+                        Console.Error.WriteLine(data.Value);
+                    }
+                    else
+                    {
+                        Console.Out.WriteLine(data.Value);
+                    }
+                }
+            }
+
             try { File.Delete(tempFile); } catch { /* ignore errors from deleting temp file */ }
             return process.ExitCode == 0;
         }
+
+        public static object writeLocker = new();
     }
 }

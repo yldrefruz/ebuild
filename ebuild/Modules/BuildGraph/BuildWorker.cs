@@ -78,8 +78,20 @@ public class BuildWorker(Graph graph) : IWorker
                 }
             }
         }
+        // 2.1 copy shared libraries non-parallel
+        foreach (var node in nodes.Where(n => n is CopySharedLibraryToRootModuleBinNode))
+        {
+            try
+            {
+                await node.ExecuteAsync(this, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                throw new CliFxException($"Copying shared library failed: {ex.Message}", 1, false, ex);
+            }
+        }
         // 3rd run additional dependency nodes non-parallel
-        foreach( var node in nodes.Where(n => n is AdditionalDependencyNode).Cast<AdditionalDependencyNode>())
+        foreach (var node in nodes.Where(n => n is AdditionalDependencyNode).Cast<AdditionalDependencyNode>())
         {
             try
             {
@@ -90,7 +102,7 @@ public class BuildWorker(Graph graph) : IWorker
                 throw new CliFxException($"Processing additional dependency failed: {ex.Message}", 1, false, ex);
             }
         }
-        
+
         // 4th run post-build steps non-parallel
         foreach (var step in nodes.Where(n => n is BuildStepNode bsn && bsn.stepType == BuildStepNode.StepType.PostBuild).Cast<BuildStepNode>())
         {
