@@ -1,6 +1,5 @@
 ﻿using System.Reflection;
 using System.Text;
-using CliFx;
 using ebuild.api;
 using ebuild.api.Toolchain;
 using ebuild.cli;

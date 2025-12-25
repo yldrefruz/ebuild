@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using System;
 using ebuild.cli;
-
+#pragma warning disable CS0649 // Field is never assigned to
 namespace ebuild.Tests.Unit
 {
     [TestFixture]
@@ -119,3 +119,4 @@ namespace ebuild.Tests.Unit
         }
     }
 }
+#pragma warning restore CS0649

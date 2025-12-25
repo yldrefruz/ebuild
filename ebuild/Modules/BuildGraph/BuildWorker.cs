@@ -1,4 +1,3 @@
-using CliFx.Exceptions;
 using ebuild.api;
 using ebuild.BuildGraph;
 using Microsoft.Extensions.Logging;
@@ -29,7 +28,7 @@ public class BuildWorker(Graph graph) : IWorker
                 catch (Exception exception)
                 {
                     // If there was an error promote it to clifx exception
-                    throw new CliFxException($"Pre-build step \"{step.Name}\" failed: {exception.Message}", 1, false, exception);
+                    throw new Exception($"Pre-build step \"{step.Name}\" failed: {exception.Message}", exception);
                 }
             }
         }
@@ -57,10 +56,8 @@ public class BuildWorker(Graph graph) : IWorker
             if (exceptions.Count > 0)
             {
                 // Aggregate all exceptions and throw as CliFxException
-                throw new CliFxException(
+                throw new Exception(
                 $"Compilation of {Module.Name} failed with {exceptions.Count} source file uncompiled(s): {string.Join("; ", exceptions.Select(e => e.Message))}",
-                1,
-                false,
                 new AggregateException(exceptions)
                 );
             }
@@ -75,7 +72,7 @@ public class BuildWorker(Graph graph) : IWorker
                 }
                 catch (Exception ex)
                 {
-                    throw new CliFxException($"Linking failed: {ex.Message}", 1, false, ex);
+                    throw new Exception($"Linking failed: {ex.Message}", ex);
                 }
             }
         }
@@ -88,7 +85,7 @@ public class BuildWorker(Graph graph) : IWorker
             }
             catch (Exception ex)
             {
-                throw new CliFxException($"Copying shared library failed: {ex.Message}", 1, false, ex);
+                throw new Exception($"Copying shared library failed: {ex.Message}", ex);
             }
         }
         // 3rd run additional dependency nodes non-parallel
@@ -100,7 +97,7 @@ public class BuildWorker(Graph graph) : IWorker
             }
             catch (Exception ex)
             {
-                throw new CliFxException($"Processing additional dependency failed: {ex.Message}", 1, false, ex);
+                throw new Exception($"Processing additional dependency failed: {ex.Message}", ex);
             }
         }
 
@@ -116,7 +113,7 @@ public class BuildWorker(Graph graph) : IWorker
             catch (Exception exception)
             {
                 // If there was an error promote it to clifx exception
-                throw new CliFxException($"Post-build step \"{step.Name}\" failed: {exception.Message}", 1, false, exception);
+                throw new Exception($"Post-build step \"{step.Name}\" failed: {exception.Message}", exception);
             }
         }
 

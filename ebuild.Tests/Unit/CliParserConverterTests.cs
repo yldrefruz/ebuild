@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using System.Collections.Generic;
 using ebuild.cli;
-
+#pragma warning disable CS0649
 namespace ebuild.Tests.Unit
 {
     [TestFixture]
@@ -42,8 +42,10 @@ namespace ebuild.Tests.Unit
             parser.Parse(new[] { "cmd", "--map=foo=42", "--map=bar=7" });
             parser.ApplyParsedToCommands();
             var root = (TestDictRoot)parser.currentCommandChain.First!.Value;
-            Assert.That(root.Map.ContainsKey("foo") && root.Map["foo"] == 42);
-            Assert.That(root.Map.ContainsKey("bar") && root.Map["bar"] == 7);
+            Assert.That(root.Map!.ContainsKey("foo") && root.Map["foo"] == 42);
+            Assert.That(root.Map!.ContainsKey("bar") && root.Map["bar"] == 7);
         }
     }
 }
+
+#pragma warning restore CS0649

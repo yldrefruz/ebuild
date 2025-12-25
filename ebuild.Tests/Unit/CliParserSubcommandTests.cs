@@ -1,6 +1,6 @@
 using NUnit.Framework;
 using ebuild.cli;
-
+#pragma warning disable CS0649
 namespace ebuild.Tests.Unit
 {
     [TestFixture]
@@ -94,3 +94,4 @@ namespace ebuild.Tests.Unit
         }
     }
 }
+#pragma warning restore CS0649
