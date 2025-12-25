@@ -15,5 +15,6 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\ebuild.api\ebuild.api.csproj" />
+      <ProjectReference Include="..\ebuild.cli\ebuild.cli.csproj" />
     </ItemGroup>
 </Project>

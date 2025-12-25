@@ -1,23 +1,19 @@
-using CliFx;
-using CliFx.Attributes;
-using CliFx.Infrastructure;
+using System.Threading;
+using System.Threading.Tasks;
+using ebuild.cli;
 
-namespace ebuild.Commands;
-
-
-public abstract class BaseCommand : ICommand
+namespace ebuild.Commands
 {
-    [CommandOption("verbose", 'v', Description = "enable verbose logging")]
-    public bool Verbose { get; init; } = false;
-
-    public BaseCommand()
+    public abstract class BaseCommand : Command
     {
-    }
+        [Option("verbose", ShortName = "v", Description = "enable verbose logging")]
+        public bool Verbose;
 
-    public virtual ValueTask ExecuteAsync(IConsole console)
-    {
-        if (Verbose)
-            EBuild.VerboseEnabled = true;
-        return ValueTask.CompletedTask;
+        public override Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
+        {
+            if (Verbose)
+                EBuild.VerboseEnabled = true;
+            return Task.FromResult(0);
+        }
     }
 }

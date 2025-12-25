@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="../ebuild/ebuild.csproj" />
     <ProjectReference Include="../ebuild.api/ebuild.api.csproj" />
+    <ProjectReference Include="../ebuild.cli/ebuild.cli.csproj" />
   </ItemGroup>
   <PropertyGroup>
     <Nullable>enable</Nullable>

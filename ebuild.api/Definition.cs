@@ -2,7 +2,6 @@
 
 namespace ebuild.api
 {
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     /// <summary>
     /// Represents a single preprocessor/definition entry typically specified as
     /// a string in the form <c>NAME=VALUE</c> or simply <c>NAME</c>.
@@ -15,6 +14,7 @@ namespace ebuild.api
     /// </summary>
     /// <param name="inValue">The raw definition string passed to the constructor.
     /// Expected formats: <c>NAME=VALUE</c> or <c>NAME</c>.</param>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class Definition(string inValue)
     {
         /// <summary>

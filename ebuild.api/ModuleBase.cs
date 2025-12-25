@@ -412,9 +412,10 @@ namespace ebuild.api
         /// <returns>Absolute path to the module's binary output directory, always ending with a directory separator.</returns>
         public string GetBinaryOutputDirectory()
         {
+            var basePath = Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, Context.Configuration, GetOutputTransformerName());
             if (UseVariants)
-                return Path.TrimEndingDirectorySeparator(Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName(), GetVariantId().ToString()) + Path.DirectorySeparatorChar);
-            return Path.TrimEndingDirectorySeparator(Path.Combine(Context.ModuleDirectory!.FullName, OutputDirectory, GetOutputTransformerName()) + Path.DirectorySeparatorChar);
+                return Path.TrimEndingDirectorySeparator(Path.Combine(basePath, GetVariantId().ToString()));
+            return Path.TrimEndingDirectorySeparator(basePath);
         }
 
 

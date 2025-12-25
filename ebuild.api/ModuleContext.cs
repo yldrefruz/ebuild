@@ -4,7 +4,6 @@ using ebuild.api.Toolchain;
 
 namespace ebuild.api
 {
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     /// <summary>
     /// Runtime context provided to modules when they are instantiated.
     ///
@@ -12,6 +11,7 @@ namespace ebuild.api
     /// module reference, target platform, toolchain, architecture, and option map.
     /// Module implementations use this context during construction and initialization.
     /// </summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public class ModuleContext
     {
         /// <summary>
@@ -27,6 +27,7 @@ namespace ebuild.api
             Toolchain = m.Toolchain;
             TargetArchitecture = m.TargetArchitecture;
             Options = m.Options;
+            Configuration = m.Configuration;
             AdditionalDependencyPaths = m.AdditionalDependencyPaths;
         }
 
@@ -106,7 +107,6 @@ namespace ebuild.api
         /// Requested output transformer id for the module as encoded in the <see cref="SelfReference"/>.
         /// </summary>
         public string RequestedOutput => SelfReference.GetOutput();
-
 
         /// <summary>
         /// Simple message wrapper used to surface informational/warning/error messages produced

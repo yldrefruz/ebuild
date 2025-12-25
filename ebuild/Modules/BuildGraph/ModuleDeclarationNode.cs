@@ -144,6 +144,8 @@ class ModuleDeclarationNode : Node
                             {
                                 linkInputs.Add(dependency.Module.GetBinaryOutputPath());
                             }
+                            var copyNode = new CopySharedLibraryToRootModuleBinNode($"CopySharedLibrary_{dependency.Module.Name}", dependency.Module.GetBinaryOutputPath());
+                            AddChild(copyNode, AccessLimit.Private);
                             break;
                         case ModuleType.Executable:
                         case ModuleType.ExecutableWin32:
