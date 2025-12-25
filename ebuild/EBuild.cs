@@ -3,6 +3,7 @@ using System.Text;
 using CliFx;
 using ebuild.api;
 using ebuild.api.Toolchain;
+using ebuild.cli;
 using ebuild.Modules;
 using ebuild.Platforms;
 using Microsoft.Extensions.Logging;
@@ -164,11 +165,12 @@ namespace ebuild
         public static async Task<int> Main(string[] args)
         {
             InitializeEBuild();
-
-            return await new CliApplicationBuilder()
-                .AddCommandsFromThisAssembly()
-                .Build()
-                .RunAsync(args);
+            CliParser parser = new();
+            parser.RegisterCommandsFromAssembly(Assembly.GetExecutingAssembly());
+            parser.Parse(args);
+            parser.ApplyParsedToCommands();
+            CancellationToken token = default;
+            return await parser.ExecuteCurrentCommandAsync(token);
         }
     }
 }

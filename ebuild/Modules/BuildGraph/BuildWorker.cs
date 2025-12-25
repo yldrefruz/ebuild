@@ -12,6 +12,7 @@ public class BuildWorker(Graph graph) : IWorker
     public Dictionary<string, object?> GlobalMetadata { get; init; } = [];
     public int MaxWorkerCount { get; set; } = 1;
     public ILogger Logger { get; init; } = EBuild.LoggerFactory.CreateLogger<BuildWorker>();
+    public bool Clean = false;
 
     public async Task WorkOnNodesAsync(List<Node> nodes, CancellationToken cancellationToken)
     {

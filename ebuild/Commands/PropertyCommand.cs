@@ -1,37 +1,24 @@
-﻿using CliFx;
-using CliFx.Attributes;
-using CliFx.Exceptions;
-using CliFx.Infrastructure;
+﻿using ebuild.cli;
 
 namespace ebuild.Commands
 {
-    [Command("property", Description = "operations for properties. These are useful for creation of custom scripts or using ebuild without referencing, directly from command line")]
-    public class PropertyCommand : BaseCommand
-    {
-
-        public override async ValueTask ExecuteAsync(IConsole console)
-        {
-            await base.ExecuteAsync(console);
-        }
-    }
-
     [Command("property get", Description = "get the value of a property")]
-    public class PropertyGetCommand : PropertyCommand
+    public class PropertyGetCommand : BaseCommand
     {
-        [CommandParameter(0, Description = "the name of the property to get")]
-        public string PropertyName { get; init; } = string.Empty;
+        [Argument(0, Description = "the name of the property to get")]
+        public string PropertyName = string.Empty;
 
-        public override async ValueTask ExecuteAsync(IConsole console)
+        public override async Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await base.ExecuteAsync(console);
             if (PropertyName == "ebuild.api.dll")
             {
-                console.Output.WriteLine(EBuild.FindEBuildApiDllPath());
+                Console.WriteLine(EBuild.FindEBuildApiDllPath());
             }
             else
             {
-                throw new CommandException($"Unknown property '{PropertyName}'");
+                throw new Exception($"Unknown property '{PropertyName}'");
             }
+            return 0;
         }
     }
 }

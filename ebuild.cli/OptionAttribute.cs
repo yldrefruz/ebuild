@@ -2,16 +2,18 @@ using System.Reflection;
 
 namespace ebuild.cli;
 
-[AttributeUsage(AttributeTargets.Field)]
+[AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]
 public class OptionAttribute : Attribute
 {
     public string? Name { get; }
     public string? ShortName { get; set; }
     public string? Description { get; set; }
+    // When true, this option may be provided at any position and will be applied
+    // to the command that declares it (useful for root/global flags like verbose).
+    public bool Global { get; set; } = false;
     public int MinimumCount { get; set; } = 0;
     public int MaximumCount { get; set; } = int.MaxValue;
     public Type? ConverterType { get; set; } = null;
-    public bool IsLocalOnly { get; set; } = false;
     public OptionAttribute()
     {
         Name = null;
@@ -30,6 +32,7 @@ public class OptionAttribute : Attribute
 
     public static bool IsMultiple(FieldInfo fieldInfo)
     {
+        if (IsDictionary(fieldInfo)) return false;
         return typeof(System.Collections.IEnumerable).IsAssignableFrom(fieldInfo.FieldType) && fieldInfo.FieldType != typeof(string);
     }
 
@@ -40,6 +43,8 @@ public class OptionAttribute : Attribute
 
     public static bool IsDictionary(FieldInfo fieldInfo)
     {
-        return typeof(System.Collections.IDictionary).IsAssignableFrom(fieldInfo.FieldType);
+        if (typeof(System.Collections.IDictionary).IsAssignableFrom(fieldInfo.FieldType)) return true;
+        // detect generic IDictionary<TKey, TValue>
+        return fieldInfo.FieldType.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(System.Collections.Generic.IDictionary<,>));
     }
 }

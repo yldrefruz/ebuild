@@ -1,58 +1,30 @@
 using System.Runtime.InteropServices;
-using CliFx.Attributes;
-using CliFx.Extensibility;
-using CliFx.Infrastructure;
 using ebuild.api.Toolchain;
+using ebuild.cli;
 using ebuild.Platforms;
 
 namespace ebuild.Commands
 {
-    public struct OptionsArray()
-    {
-        public Dictionary<string, string> Options { get; set; } = [];
-
-
-        public static implicit operator Dictionary<string, string>(OptionsArray optionsArray) => optionsArray.Options;
-        public static implicit operator OptionsArray(Dictionary<string, string> dictionary) => new() { Options = dictionary };
-    }
-    public class OptionsArrayConverter : CliFx.Extensibility.BindingConverter<OptionsArray>
-    {
-        public override OptionsArray Convert(string? value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return new OptionsArray();
-            var entries = value.Split(';');
-            var dictionary = new Dictionary<string, string>();
-            foreach (var entry in entries)
-            {
-                var parts = entry.Split('=', 2);
-                if (parts.Length != 2)
-                    throw new FormatException("Invalid dictionary entry format. Expected format: key=value");
-                dictionary[parts[0]] = parts[1];
-            }
-            return dictionary;
-        }
-    }
-
-    public abstract class ModuleCreatingCommand : BaseCommand
-    {
-        [CommandParameter(0, Description = "the module file to build", IsRequired = false)]
-        public string ModuleFile { get; init; } = ".";
-        [CommandOption("configuration", 'c', Description = "the build configuration to use")]
-        public string Configuration { get; init; } = Config.Get().DefaultBuildConfiguration;
-        [CommandOption("toolchain", Description = "the toolchain to use")]
-        public string Toolchain { get; init; } = IToolchainRegistry.Get().GetDefaultToolchainName() ?? "";
-        [CommandOption("additional-compiler-option", 'C', Description = "additional compiler options to pass into compiler")]
-        public string[] AdditionalCompilerOptions { get; init; } = [];
-        [CommandOption("additional-linker-option", 'L', Description = "additional linker options to pass into linker")]
-        public string[] AdditionalLinkerOptions { get; init; } = [];
-        [CommandOption("additional-dependency-path", 'P', Description = "additional paths to search dependency modules at")]
-        public string[] AdditionalDependencyPaths { get; init; } = [];
-        [CommandOption("target-architecture", 't', Description = "the target architecture to use")]
-        public Architecture TargetArchitecture { get; init; } = RuntimeInformation.OSArchitecture;
-        public string Platform { get; init; } = PlatformRegistry.GetHostPlatform().Name;
-        [CommandOption("option", 'D', Description = "the options to pass into module", Converter = typeof(OptionsArrayConverter))]
-        public OptionsArray Options { get; init; } = new OptionsArray();
+    public abstract class ModuleCreatingCommand : Command
+    {       
+        [Argument(0, Name="module-file", Description = "the module file to build", IsRequired = true)]
+        public string ModuleFile = ".";
+        [Option("configuration", ShortName = "c", Description = "the build configuration to use")]
+        public string Configuration = Config.Get().DefaultBuildConfiguration;
+        [Option("toolchain", Description = "the toolchain to use")]
+        public string Toolchain = IToolchainRegistry.Get().GetDefaultToolchainName() ?? "";
+        [Option("additional-compiler-option", ShortName = "C", Description = "additional compiler options to pass into compiler")]
+        public string[] AdditionalCompilerOptions = [];
+        [Option("additional-linker-option", ShortName = "L", Description = "additional linker options to pass into linker")]
+        public string[] AdditionalLinkerOptions = [];
+        [Option("additional-dependency-path", ShortName = "P", Description = "additional paths to search dependency modules at")]
+        public string[] AdditionalDependencyPaths = [];
+        [Option("target-architecture", ShortName = "t", Description = "the target architecture to use")]
+        public Architecture TargetArchitecture = RuntimeInformation.OSArchitecture;
+        [Option("platform", ShortName = "m", Description = "the target platform to use")]
+        public string Platform = PlatformRegistry.GetHostPlatform().Name;
+        [Option("option", ShortName = "D", Description = "the options to pass into module")]
+        public Dictionary<string, string> Options = [];
 
         public ModuleInstancingParams ModuleInstancingParams => _moduleInstancingParamsCache ??= new()
         {
@@ -67,9 +39,5 @@ namespace ebuild.Commands
             SelfModuleReference = new api.ModuleReference(ModuleFile)
         };
         private ModuleInstancingParams? _moduleInstancingParamsCache;
-        public override async ValueTask ExecuteAsync(IConsole console)
-        {
-            await base.ExecuteAsync(console);
-        }
     }
 }

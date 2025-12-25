@@ -1,46 +1,31 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
-using CliFx;
-using CliFx.Attributes;
-using CliFx.Exceptions;
-using CliFx.Infrastructure;
 using ebuild.api;
+using ebuild.cli;
 using ebuild.Modules;
 using ebuild.Modules.BuildGraph;
 
 namespace ebuild.Commands
 {
-    [Command("generate", Description = "generate data for the module.")]
-    public class GenerateCommand : ModuleCreatingCommand
-    {
-        public override async ValueTask ExecuteAsync(IConsole console)
-        {
-            await base.ExecuteAsync(console);
-        }
-    }
-
-
     [Command("generate compile_commands.json", Description = "generate compile_commands.json for the module.")]
-    public class GenerateCompileCommandsJsonCommand : GenerateCommand
+    public class GenerateCompileCommandsJsonCommand : ModuleCreatingCommand
     {
-        [CommandOption("outfile", 'o', Description = "the file to output for, directories will be created.")]
-        public string OutFile { get; init; } = "compile_commands.json";
-        [CommandOption("dependencies", 'd', Description = "also generate for dependencies.")]
-        public bool ShouldDoForDependencies { get; init; } = false;
+        [Option("outfile", ShortName = "o", Description = "the file to output for, directories will be created.")]
+        public string OutFile = "compile_commands.json";
+        [Option("dependencies", ShortName = "d", Description = "also generate for dependencies.")]
+        public bool ShouldDoForDependencies = false;
 
-        public override async ValueTask ExecuteAsync(IConsole console)
+        public override async Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await base.ExecuteAsync(console);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
-            var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new CommandException("Failed to create module instance.");
+            var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new Exception("Failed to create module instance.");
             var graph = (await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams))!;
             var worker = graph.CreateWorker<GenerateCompileCommandsJsonWorker>();
             worker.GlobalMetadata["compile_commands_module_registry"] = new Dictionary<ModuleBase, List<JsonObject>>();
             if (!ShouldDoForDependencies)
                 worker.GlobalMetadata["target_module"] = createdModule;
 
-            await (worker as IWorker).ExecuteAsync(console.RegisterCancellationHandler());
+            await (worker as IWorker).ExecuteAsync(cancellationToken);
             (worker as IWorker).GlobalMetadata.TryGetValue("compile_commands_module_registry", out object? value);
 
             if (value is Dictionary<ModuleBase, List<JsonObject>> compileCommandsModuleRegistry)
@@ -52,41 +37,42 @@ namespace ebuild.Commands
                     var outputPath = Path.GetFullPath(OutFile, module.Context.ModuleDirectory.FullName);
                     Directory.CreateDirectory(module.OutputDirectory);
                     await File.WriteAllTextAsync(outputPath, JsonSerializer.Serialize(list, writeOptions));
-                    console.Output.WriteLine($"Generated {outputPath}");
+                    Console.WriteLine($"Generated {outputPath}");
                 }
             }
+            return 0;
         }
 
         private static JsonSerializerOptions writeOptions = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     }
 
     [Command("generate buildgraph", Description = "generate a representation of the build graph for the module. Write to stdout.")]
-    public class GenerateBuildGraphString : GenerateCommand
+    public class GenerateBuildGraphString : ModuleCreatingCommand
     {
         public enum Format
         {
             String,
             Html
         }
-        [CommandOption("format", 'f', Description = "the output format, string or json.")]
-        public Format OutputFormat { get; init; } = Format.String;
-        public override async ValueTask ExecuteAsync(IConsole console)
+        [Option("format", ShortName = "f", Description = "the output format, string or json.")]
+        public Format OutputFormat = Format.String;
+        public override async Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await base.ExecuteAsync(console);
             var moduleFile = (ModuleFile)ModuleInstancingParams.SelfModuleReference;
-            var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new CommandException("Failed to create module instance.");
+            var createdModule = await moduleFile.CreateModuleInstance(ModuleInstancingParams) ?? throw new Exception("Failed to create module instance.");
             var graph = (await moduleFile.BuildOrGetBuildGraph(ModuleInstancingParams))!;
             switch (OutputFormat)
             {
                 case Format.String:
-                    console.Output.WriteLine(graph.CreateTreeString());
+                    Console.WriteLine(graph.CreateTreeString());
                     break;
                 case Format.Html:
-                    console.Output.WriteLine(graph.CreateTreeHtml());
+                    Console.WriteLine(graph.CreateTreeHtml());
                     break;
                 default:
-                    throw new CommandException($"Unsupported format: {OutputFormat}");
+                    throw new Exception($"Unsupported format: {OutputFormat}");
             }
+            return 0;
         }
     }
 
@@ -94,32 +80,29 @@ namespace ebuild.Commands
     [Command("generate module", Description = "generate a new module file or update the c# solution to include references to dependencies of the module.")]
     public class GenerateModuleCommand : BaseCommand
     {
-        override public async ValueTask ExecuteAsync(IConsole console)
+        override public async Task<int> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await base.ExecuteAsync(console);
-            var generator = FindGenerator(Template) ?? throw new CommandException($"Module file generator '{Template}' not found.");
+            var generator = FindGenerator(Template) ?? throw new Exception($"Module file generator '{Template}' not found.");
             if (!Update)
                 generator.Generate(ModuleFile, Force, TemplateOptions);
             if (Update)
             {
                 generator.UpdateSolution(ModuleFile);
             }
+            return 0;
         }
 
-        [CommandParameter(0, Description = "the module name to create. If not specified, the created file will be index.ebuild.cs", IsRequired = false)]
-        public string ModuleFile { get; init; } = "index.ebuild.cs";
-
-        [CommandOption("force", 'f', Description = "overwrite existing module file if it exists")]
-        public bool Force { get; init; } = false;
-
-        [CommandOption("update", 'u', Description = "update the c# solution to include dependencies of the module")]
-        public bool Update { get; init; } = false;
-
-        [CommandOption("template", 't', Description = "the module template to use when creating a new module file")]
-        public string Template { get; init; } = "default";
-        [CommandOption("template-options", 'O', Description = "the options to pass into the module template, in key=value;key2=value2 format", Converter = typeof(OptionsArrayConverter))]
-        public OptionsArray TemplateOptions { get; init; } = new();
-        IModuleFileGenerator FindGenerator(string Name)
+        [Argument(0, Description = "the module name to create. If not specified, the created file will be index.ebuild.cs", IsRequired = false)]
+        public string ModuleFile = "index.ebuild.cs";
+        [Option("force", ShortName = "f", Description = "overwrite existing module file if it exists")]
+        public bool Force = false;
+        [Option("update", ShortName = "u", Description = "update the c# solution to include dependencies of the module")]
+        public bool Update = false;
+        [Option("template", ShortName = "t", Description = "the module template to use when creating a new module file")]
+        public string Template = "default";
+        [Option("template-options", ShortName = "O", Description = "the options to pass into the module template, use multiple to pass in multiple options -OKey=Value or -OKey Value")]
+        public Dictionary<string, string> TemplateOptions = new();
+        static IModuleFileGenerator FindGenerator(string Name)
         {
             return ModuleFileGeneratorRegistry.Instance.GetAll().First(g => g.Name == Name);
         }
